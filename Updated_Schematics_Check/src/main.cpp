@@ -8,6 +8,8 @@
 #include <Adafruit_BME680.h>
 #include <DHT.h>
 #include <LiquidCrystal_I2C.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
 
 // -------- Pin Map --------
 // I2C pins used for LCD and BME680 (explicitly chosen for this board)
@@ -73,6 +75,11 @@ static const unsigned long READ_MS = 2000;
 // Whether the relay module is active LOW (true for many modules). This
 // toggles how setRelay() writes the pin to turn the pump on/off.
 static const bool RELAY_ACTIVE_LOW = true;
+
+// -------- Wi-Fi --------
+const char *WIFI_SSID = "Galaxy S25 FCF2";
+const char *WIFI_PASS = "Jackmiley46";
+const char *SERVER_URL = "http://10.28.64.211:5000/ingest";
 
 // -------- State --------
 // Runtime state tracking for timing
@@ -198,6 +205,17 @@ void setup()
     ledsOK();
   else
     ledsERR();
+
+  Serial.println("Connecting to Wi-Fi...");
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWi-Fi connected!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
 
   lastReadMs = millis();
 }
@@ -343,5 +361,25 @@ void loop()
 
     showOnLCD(r);
     maybeWater(r);
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
+      HTTPClient http;
+      http.begin(SERVER_URL);
+      http.addHeader("Content-Type", "application/json");
+
+      String payload = "{";
+      payload += "\"soil\":" + String(r.soilRaw) + ",";
+      payload += "\"light\":" + String(r.ldrRaw) + ",";
+      payload += "\"temp\":" + String(r.tempC, 2) + ",";
+      payload += "\"humidity\":" + String(r.humidity, 2) + ",";
+      payload += "\"pump\":" + String((digitalRead(PIN_RELAY) == LOW) ? 1 : 0) + ",";
+      payload += "\"condition\":\"" + String((r.soilRaw > SOIL_DRY_THRESHOLD) ? "dry" : "ok") + "\"";
+      payload += "}";
+
+      int code = http.POST(payload);
+      Serial.printf("POST /ingest -> code %d\n", code);
+      http.end();
+    }
   }
 }
