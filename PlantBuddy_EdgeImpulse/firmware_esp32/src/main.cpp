@@ -3,99 +3,96 @@
  * Wiring matches our “Official Connections v2”
  * Board: ESP32 Dev Module (30-pin)
  ******************************************************/
+#define CLEAN_SERIAL
 
 #include <Wire.h>
 #include <Adafruit_BME680.h>
 #include <DHT.h>
 #include <LiquidCrystal_I2C.h>
+#include <BH1750.h>  // *** NEW: BH1750 light sensor ***
 
 // -------- Pin Map --------
 // I2C pins used for LCD and BME680 (explicitly chosen for this board)
-// On many ESP32 boards these are the default SDA/SCL pins but we set them
-// explicitly with Wire.begin(SDA, SCL) below so the wiring is clear.
 static const int PIN_I2C_SDA = 21;
 static const int PIN_I2C_SCL = 22;
 
-// Analog sensors: soil moisture probe and LDR (light sensor)
-// Note: ADC pins 34 and 35 on many ESP32 variants are input-only (ADC1)
+// Analog sensors: soil moisture probe
+// Note: we no longer use an analog LDR, BH1750 is I2C.
 static const int PIN_SOIL_ADC = 34; // ADC1 only-input
-static const int PIN_LDR_ADC = 35;  // ADC1 only-input
+// static const int PIN_LDR_ADC = 35;  // *** LDR no longer used ***
 
-// Relay control pin (drives a transistor or relay module). Many small 3-pin
-// relay modules are active-LOW, meaning writing LOW energizes the relay.
+// Relay control pin
 static const int PIN_RELAY = 17; // Active-LOW on many 3-pin modules
 
-// DHT22 temperature/humidity sensor data pin. If using a bare DHT module
-// add a pull-up (10k) from data to 3.3V as noted.
-static const int PIN_DHT = 27; // DHT22 data (with 10k to 3V3 if bare sensor)
+// DHT22 temperature/humidity sensor
+static const int PIN_DHT = 27; // DHT22 data
 #define DHTTYPE DHT22
 
-// Simple user interface: buzzer and two LEDs (red/green)
-// Buzzer is driven as a digital on/off (not PWM) for short beeps.
-static const int PIN_BUZZ = 15;    // Active buzzer (on/off)
-static const int PIN_LED_RED = 16; // Error / attention
-static const int PIN_LED_GRN = 4;  // OK status
+// Simple user interface: buzzer and two LEDs
+static const int PIN_BUZZ = 15;
+static const int PIN_LED_RED = 16;
+static const int PIN_LED_GRN = 4;
 
 // -------- LCD / BME680 I2C --------
-// I2C device addresses and LCD geometry
-// Many inexpensive I2C LCD backpacks use either 0x27 or 0x3F. If the LCD
-// doesn't initialize, try swapping this value to 0x3F.
-static const uint8_t LCD_ADDR = 0x27; // change to 0x3F if your module uses that
+static const uint8_t LCD_ADDR = 0x27;
 static const uint8_t LCD_COLS = 16;
 static const uint8_t LCD_ROWS = 2;
 
-// BME680 I2C address when SDO is tied to GND (common wiring)
-static const uint8_t BME680_ADDR = 0x76; // SDO→GND
+// BME680 I2C address when SDO is tied to GND
+static const uint8_t BME680_ADDR = 0x76;
 
 // Peripheral instances
 LiquidCrystal_I2C lcd(LCD_ADDR, LCD_COLS, LCD_ROWS);
-Adafruit_BME680 bme;       // BME680 communicates over I2C
-DHT dht(PIN_DHT, DHTTYPE); // DHT sensor on specified data pin
+Adafruit_BME680 bme;       // BME680 over I2C
+DHT dht(PIN_DHT, DHTTYPE); // DHT sensor
+BH1750 lightMeter;         // *** NEW: BH1750 instance ***
 
 // -------- App Config --------
-// Application tuning constants. Adjust to match your hardware and needs.
-// SOIL_DRY_THRESHOLD: threshold for deciding when soil is "dry". ADC values
-// are 0..4095 with analogReadResolution(12) below. Many capacitive soil
-// sensors return LOWER values when wetter; test your sensor to pick a value.
-static const int SOIL_DRY_THRESHOLD = 1800; // 0-4095 (tune for your probe & 3.3V)
-
-// WATER_MS: how long to turn the pump on when watering (milliseconds).
-static const int WATER_MS = 3000; // pump ON duration
-
-// Minimum time between pump activations to avoid over-watering / pump wear.
-static const long WATER_COOLDOWN_MS = 60L * 1000L; // min time between pump runs
-
-// Read intervals
-// How often to perform sensor reads and UI updates (milliseconds)
-static const unsigned long READ_MS = 2000;
-
-// Relay polarity (many boards are active-LOW)
-// Whether the relay module is active LOW (true for many modules). This
-// toggles how setRelay() writes the pin to turn the pump on/off.
+static const int SOIL_DRY_THRESHOLD = 1800; // tune for your probe & 3.3V
+static const int WATER_MS = 3000;           // pump ON duration (ms)
+static const long WATER_COOLDOWN_MS = 60L * 1000L; // min time between watering
+static const unsigned long READ_MS = 2000;  // sensor/UI update interval
 static const bool RELAY_ACTIVE_LOW = true;
 
 // -------- State --------
-// Runtime state tracking for timing
-unsigned long lastReadMs = 0;        // last time we sampled sensors/UI
-unsigned long lastWaterActionMs = 0; // last time we ran the pump
+unsigned long lastReadMs = 0;
+unsigned long lastWaterActionMs = 0;
+bool pumpState = false;
+
+// Edge Impulse integration stub
+#ifdef __cplusplus
+struct Readings; // forward-declare
+#endif
+#ifdef USE_EDGE_IMPULSE
+// #include <edge-impulse-sdk/classifier/ei_run_classifier.h>
+bool run_edge_impulse_classifier(const Readings &r, String &out_label, float &out_conf)
+{
+  out_label = "unknown";
+  out_conf = 0.0f;
+  return false;
+}
+#else
+bool run_edge_impulse_classifier(const Readings &r, String &out_label, float &out_conf)
+{
+  (void)r;
+  out_label = "none";
+  out_conf = 0.0f;
+  return false;
+}
+#endif
 
 void setRelay(bool on)
 {
-  // Abstract away relay polarity so callers pass a logical 'on' flag.
-  // If the relay is active-LOW, writing LOW energizes it; otherwise HIGH does.
   if (RELAY_ACTIVE_LOW)
-  {
     digitalWrite(PIN_RELAY, on ? LOW : HIGH);
-  }
   else
-  {
     digitalWrite(PIN_RELAY, on ? HIGH : LOW);
-  }
+
+  pumpState = on;
 }
 
 void beep(int ms = 150)
 {
-  // Simple blocking beep using the buzzer pin. Good for brief signals.
   digitalWrite(PIN_BUZZ, HIGH);
   delay(ms);
   digitalWrite(PIN_BUZZ, LOW);
@@ -103,22 +100,17 @@ void beep(int ms = 150)
 
 void ledsOK()
 {
-  // Show green LED = OK
   digitalWrite(PIN_LED_GRN, HIGH);
   digitalWrite(PIN_LED_RED, LOW);
 }
 void ledsERR()
 {
-  // Show red LED = error/attention
   digitalWrite(PIN_LED_GRN, LOW);
   digitalWrite(PIN_LED_RED, HIGH);
 }
 
 bool initLCD()
 {
-  // Initialize the I2C LCD and show a short boot message. Many I2C LCD
-  // backpacks don't provide a way to detect presence before init(), so if
-  // the LCD address is wrong you'll typically see garbage or no output.
   lcd.init();
   lcd.backlight();
   lcd.clear();
@@ -131,21 +123,14 @@ bool initLCD()
 
 bool initBME680()
 {
-  // Try to initialize the BME680 on the expected I2C address. If the device
-  // is not present this returns false and callers can decide how to proceed.
   if (!bme.begin(BME680_ADDR))
-  {
     return false;
-  }
 
-  // Configure recommended oversampling and filter settings for reasonable
-  // accuracy without excessive I2C or CPU load.
   bme.setTemperatureOversampling(BME680_OS_8X);
   bme.setHumidityOversampling(BME680_OS_2X);
   bme.setPressureOversampling(BME680_OS_4X);
   bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
-  // Disable or lower gas sensor heater (not needed for basic temp/humidity)
-  bme.setGasHeater(0, 0); // 0 = off
+  bme.setGasHeater(0, 0); // off
   return true;
 }
 
@@ -157,21 +142,28 @@ void setup()
 
   pinMode(PIN_LED_RED, OUTPUT);
   pinMode(PIN_LED_GRN, OUTPUT);
-  ledsERR(); // red on until init passes
+  ledsERR(); // red until init passes
 
   pinMode(PIN_BUZZ, OUTPUT);
   digitalWrite(PIN_BUZZ, LOW);
 
-  // ADC setup
+  // ADC setup (soil only)
   analogReadResolution(12); // 0..4095
-  // Optionally: analogSetAttenuation(ADC_11db); // Wider range, default is fine
+
+  // Serial for debugging (start this first)
+  Serial.begin(115200);
+  delay(100);
 
   // I2C on explicit pins
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
 
-  // Serial for debugging
-  Serial.begin(115200);
-  delay(100);
+  // *** NEW: init BH1750 (ADDR floating -> address 0x23) ***
+  bool lightOK = lightMeter.begin(BH1750::CONTINUOUS_HIGH_RES_MODE);
+#ifndef CLEAN_SERIAL
+  if (!lightOK) {
+    Serial.println("BH1750 init failed!");
+  }
+#endif
 
   // Start peripherals
   bool lcdOK = initLCD();
@@ -179,6 +171,7 @@ void setup()
   dht.begin();
   bool bmeOK = initBME680();
 
+#ifndef CLEAN_SERIAL
   if (lcdOK)
   {
     lcd.clear();
@@ -189,11 +182,12 @@ void setup()
     lcd.print("BME680 ");
     lcd.print(bmeOK ? "OK" : "FAIL");
   }
+#endif
 
-  // Boot beep
+#ifndef CLEAN_SERIAL
   beep(120);
+#endif
 
-  // LED status
   if (bmeOK)
     ledsOK();
   else
@@ -202,25 +196,33 @@ void setup()
   lastReadMs = millis();
 }
 
+// *** UPDATED: light is now lux (BH1750), not LDR ADC ***
 struct Readings
 {
   float tempC;
   float humidity;
   float pressure_hPa;
-  int soilRaw;
-  int ldrRaw;
+  int   soilRaw;
+  float lux;       // <- BH1750 lux
   float dhtTempC;
   float dhtHum;
-  bool bmeOK;
-  bool dhtOK;
+  bool  bmeOK;
+  bool  dhtOK;
 };
 
 Readings readAll()
 {
   Readings r{};
-  // Soil & LDR analog
+
+  // Soil analog
   r.soilRaw = analogRead(PIN_SOIL_ADC);
-  r.ldrRaw = analogRead(PIN_LDR_ADC);
+
+  // *** NEW: BH1750 light in lux ***
+  float lux = lightMeter.readLightLevel(); // returns lux, or <0 on error
+  if (lux < 0) {
+    lux = 0.0f; // fallback if sensor error
+  }
+  r.lux = lux;
 
   // BME680
   r.bmeOK = bme.performReading();
@@ -241,11 +243,12 @@ Readings readAll()
 
 void showOnLCD(const Readings &r)
 {
-  // Two-line snapshot, fits 16x2
   // L1: So:#### L:####
   // L2: T:##.#C H:##%
   char line1[17], line2[17];
-  snprintf(line1, sizeof(line1), "So:%4d L:%4d", r.soilRaw, r.ldrRaw);
+
+  // *** CHANGED: display lux (rounded to integer) instead of raw ADC ***
+  snprintf(line1, sizeof(line1), "So:%4d L:%4.0f", r.soilRaw, r.lux);
 
   float tShow = r.bmeOK ? r.tempC : (r.dhtOK ? r.dhtTempC : NAN);
   float hShow = r.bmeOK ? r.humidity : (r.dhtOK ? r.dhtHum : NAN);
@@ -272,18 +275,47 @@ void showOnLCD(const Readings &r)
     lcd.print(' ');
 }
 
+// Print a single CSV line suitable for Edge Impulse data forwarder.
+// Order: soil, light(lux), temp, humidity, pump_state
+void printForEdgeImpulse(const Readings &r)
+{
+  float temp = 0.0f;
+  float hum = 0.0f;
+
+  if (r.bmeOK)
+  {
+    temp = r.tempC;
+    hum = r.humidity;
+  }
+  else if (r.dhtOK)
+  {
+    temp = r.dhtTempC;
+    hum = r.dhtHum;
+  }
+  else
+  {
+    temp = 0.0f;
+    hum = 0.0f;
+  }
+
+  // *** CHANGED: second field is lux instead of LDR ADC ***
+  Serial.print(r.soilRaw);
+  Serial.print(',');
+  Serial.print(r.lux, 2);
+  Serial.print(',');
+  Serial.print(temp, 2);
+  Serial.print(',');
+  Serial.print(hum, 2);
+  Serial.print(',');
+  Serial.println(pumpState ? 1 : 0);
+}
+
 void maybeWater(const Readings &r)
 {
   unsigned long now = millis();
 
-  // Simple rule: if soil is "dry" numerically below threshold (or above, depending on your sensor),
-  // pump for WATER_MS, then wait WATER_COOLDOWN_MS before allowing again.
-  // NOTE: Many capacitive sensors give LOWER values when wetter. Adjust threshold empirically.
-  // Determine dryness. Depending on your sensor 'dry' may correspond to higher
-  // or lower ADC values; this code assumes 'larger value = drier'. Flip if needed.
-  bool isDry = (r.soilRaw > SOIL_DRY_THRESHOLD); // flip sign if your sensor is reversed
+  bool isDry = (r.soilRaw > SOIL_DRY_THRESHOLD); // adjust if sensor reversed
 
-  // Status LED: green when OK, red when "dry"
   if (isDry)
   {
     digitalWrite(PIN_LED_RED, HIGH);
@@ -297,16 +329,17 @@ void maybeWater(const Readings &r)
 
   if (isDry && (now - lastWaterActionMs >= WATER_COOLDOWN_MS))
   {
-    // Start watering
+#ifndef CLEAN_SERIAL
     Serial.println(F("[PUMP] ON"));
+#endif
     setRelay(true);
-    // Short confirmation chirp
     beep(60);
 
     delay(WATER_MS);
-
     setRelay(false);
+#ifndef CLEAN_SERIAL
     Serial.println(F("[PUMP] OFF"));
+#endif
     lastWaterActionMs = millis();
   }
 }
@@ -320,27 +353,15 @@ void loop()
 
     Readings r = readAll();
 
-    // Debug to Serial
-    Serial.print(F("Soil="));
-    Serial.print(r.soilRaw);
-    Serial.print(F("  LDR="));
-    Serial.print(r.ldrRaw);
-    Serial.print(F("  BME(ok="));
-    Serial.print(r.bmeOK);
-    Serial.print(F(") T="));
-    Serial.print(r.tempC, 1);
-    Serial.print(F("C H="));
-    Serial.print(r.humidity, 0);
-    Serial.print(F("% P="));
-    Serial.print(r.pressure_hPa, 1);
-    Serial.print(F("  DHT(ok="));
-    Serial.print(r.dhtOK);
-    Serial.print(F(") T="));
-    Serial.print(r.dhtTempC, 1);
-    Serial.print(F("C H="));
-    Serial.print(r.dhtHum, 0);
-    Serial.println(F("%"));
+    String label;
+    float confidence = 0.0f;
+    bool didInfer = run_edge_impulse_classifier(r, label, confidence);
+    (void)didInfer;
 
+    // Send CSV for Edge Impulse
+    printForEdgeImpulse(r);
+
+    // UI + watering logic
     showOnLCD(r);
     maybeWater(r);
   }

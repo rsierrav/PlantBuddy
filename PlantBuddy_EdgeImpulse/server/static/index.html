@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>PlantBuddy Live</title>
+    <style>
+      body {
+        font-family: Arial, Helvetica, sans-serif;
+        margin: 20px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        max-width: 700px;
+      }
+      td,
+      th {
+        border: 1px solid #ddd;
+        padding: 8px;
+      }
+      th {
+        background: #f4f4f4;
+        text-align: left;
+      }
+      .controls {
+        margin-top: 12px;
+      }
+      button {
+        padding: 8px 12px;
+        margin-right: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>PlantBuddy Live</h2>
+    <p>
+      Live sensor stream from the ESP32. Use the buttons to label the latest
+      sample.
+    </p>
+
+    <table id="latest">
+      <thead>
+        <tr>
+          <th>timestamp</th>
+          <th>soil</th>
+          <th>light</th>
+          <th>temp</th>
+          <th>humidity</th>
+          <th>pump</th>
+          <th>condition</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr id="row">
+          <td colspan="7">No data yet</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="controls">
+      <label>Quick labels:</label>
+      <button data-label="dry">Dry</button>
+      <button data-label="moist">Moist</button>
+      <button data-label="wet">Wet</button>
+      <button id="export">Download EI CSV</button>
+    </div>
+
+    <pre
+      id="log"
+      style="margin-top: 16px; max-width: 700px; white-space: pre-wrap"
+    ></pre>
+
+    <script>
+      const es = new EventSource("/stream");
+      const log = document.getElementById("log");
+      let latest = null;
+
+      es.onmessage = (ev) => {
+        try {
+          const obj = JSON.parse(ev.data);
+          latest = obj;
+          updateTable(obj);
+          log.innerText =
+            new Date().toLocaleTimeString() +
+            " - " +
+            JSON.stringify(obj) +
+            "\n" +
+            log.innerText;
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      es.onerror = (e) => {
+        log.innerText =
+          "EventSource error. Is server running?\n" + log.innerText;
+      };
+
+      function updateTable(o) {
+        const row = document.getElementById("row");
+        row.innerHTML = "";
+        const ts = document.createElement("td");
+        ts.innerText = o.timestamp || "";
+        const soil = document.createElement("td");
+        soil.innerText = o.soil;
+        const light = document.createElement("td");
+        light.innerText = o.light;
+        const temp = document.createElement("td");
+        temp.innerText = o.temp;
+        const hum = document.createElement("td");
+        hum.innerText = o.humidity;
+        const pump = document.createElement("td");
+        pump.innerText = o.pump;
+        const cond = document.createElement("td");
+        cond.innerText = o.condition || "";
+        row.appendChild(ts);
+        row.appendChild(soil);
+        row.appendChild(light);
+        row.appendChild(temp);
+        row.appendChild(hum);
+        row.appendChild(pump);
+        row.appendChild(cond);
+      }
+
+      // Label buttons
+      for (const btn of document.querySelectorAll("button[data-label]")) {
+        btn.addEventListener("click", async () => {
+          if (!latest) {
+            alert("No sample yet");
+            return;
+          }
+          const label = btn.getAttribute("data-label");
+          const payload = {
+            soil: latest.soil,
+            light: latest.light,
+            temp: latest.temp,
+            humidity: latest.humidity,
+            label,
+          };
+          try {
+            const r = await fetch("/label", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            if (r.ok) alert("Labeled: " + label);
+            else alert("Label failed: " + r.status);
+          } catch (e) {
+            alert("Network error");
+          }
+        });
+      }
+
+      // Export EI CSV
+      document.getElementById("export").addEventListener("click", () => {
+        window.location = "/export-ei-csv";
+      });
+    </script>
+  </body>
+</html>
