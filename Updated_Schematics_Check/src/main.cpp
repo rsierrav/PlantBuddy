@@ -77,9 +77,9 @@ static const unsigned long READ_MS = 2000;
 static const bool RELAY_ACTIVE_LOW = true;
 
 // -------- Wi-Fi --------
-const char *WIFI_SSID = "Galaxy S25 FCF2";
-const char *WIFI_PASS = "Jackmiley46";
-const char *SERVER_URL = "http://10.28.64.211:5000/ingest";
+const char *WIFI_SSID = "arrozconhuevo";
+const char *WIFI_PASS = "creek7527flight";
+const char *SERVER_URL = "http://192.168.1.173:5000/ingest";
 
 // -------- State --------
 // Runtime state tracking for timing
