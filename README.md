@@ -19,7 +19,7 @@ IoT watering/monitoring system using an ESP32, LCD1602 (I2C), soil moisture sens
 ````bash
 git clone https://github.com/rsierrav/PlantBuddy.git
 cd PlantBuddy
-
+````
 ### Build and Upload
 
 1. Open the folder in VS Code.
