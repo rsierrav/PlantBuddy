@@ -9,7 +9,7 @@
 #include <Adafruit_BME680.h>
 #include <DHT.h>
 #include <LiquidCrystal_I2C.h>
-#include <BH1750.h>  // *** NEW: BH1750 light sensor ***
+#include <BH1750.h> 
 #include <WiFi.h>
 #include <HTTPClient.h>
 
@@ -200,28 +200,47 @@ void setup()
   else
     ledsERR();
 
-  Serial.println("Connecting to Wi-Fi...");
+  // --- Wi-Fi connect (optional, non-blocking) ---
+  unsigned long wifiStart = millis();
   WiFi.begin(WIFI_SSID, WIFI_PASS);
-  while (WiFi.status() != WL_CONNECTED)
+
+#ifndef CLEAN_SERIAL
+  Serial.println("Connecting to Wi-Fi...");
+#endif
+
+  // Try for up to 10 seconds, then continue offline
+  while (WiFi.status() != WL_CONNECTED && (millis() - wifiStart) < 10000)
   {
     delay(500);
+#ifndef CLEAN_SERIAL
     Serial.print(".");
+#endif
   }
-  Serial.println("\nWi-Fi connected!");
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
+
+#ifndef CLEAN_SERIAL
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    Serial.println("\nWi-Fi connected!");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+  }
+  else
+  {
+    Serial.println("\nWi-Fi failed, continuing offline.");
+  }
+#endif
 
   lastReadMs = millis();
+
 }
 
-// *** UPDATED: light is now lux (BH1750), not LDR ADC ***
 struct Readings
 {
   float tempC;
   float humidity;
   float pressure_hPa;
   int   soilRaw;
-  float lux;       // <- BH1750 lux
+  float lux;      
   float dhtTempC;
   float dhtHum;
   bool  bmeOK;
@@ -235,7 +254,6 @@ Readings readAll()
   // Soil analog
   r.soilRaw = analogRead(PIN_SOIL_ADC);
 
-  // *** NEW: BH1750 light in lux ***
   float lux = lightMeter.readLightLevel(); // returns lux, or <0 on error
   if (lux < 0) {
     lux = 0.0f; // fallback if sensor error
@@ -414,8 +432,13 @@ void loop()
       payload += "}";
 
       int code = http.POST(payload);
+#ifndef CLEAN_SERIAL
       Serial.printf("POST /ingest -> code %d\n", code);
+#else
+      (void)code; // avoid unused variable warning
+#endif
       http.end();
+
     }
   }
 }
