@@ -389,12 +389,27 @@ void loop()
       http.begin(SERVER_URL);
       http.addHeader("Content-Type", "application/json");
 
+      // Pick temp/humidity like we did for Edge Impulse
+      float temp = 0.0f;
+      float hum  = 0.0f;
+
+      if (r.bmeOK)
+      {
+        temp = r.tempC;
+        hum  = r.humidity;
+      }
+      else if (r.dhtOK)
+      {
+        temp = r.dhtTempC;
+        hum  = r.dhtHum;
+      }
+
       String payload = "{";
       payload += "\"soil\":" + String(r.soilRaw) + ",";
-      payload += "\"light\":" + String(r.ldrRaw) + ",";
-      payload += "\"temp\":" + String(r.tempC, 2) + ",";
-      payload += "\"humidity\":" + String(r.humidity, 2) + ",";
-      payload += "\"pump\":" + String((digitalRead(PIN_RELAY) == LOW) ? 1 : 0) + ",";
+      payload += "\"light\":" + String(r.lux, 2) + ",";          // <- BH1750 lux
+      payload += "\"temp\":" + String(temp, 2) + ",";
+      payload += "\"humidity\":" + String(hum, 2) + ",";
+      payload += "\"pump_state\":" + String(pumpState ? 1 : 0) + ",";  // or keep "pump" if your server expects that
       payload += "\"condition\":\"" + String((r.soilRaw > SOIL_DRY_THRESHOLD) ? "dry" : "ok") + "\"";
       payload += "}";
 
