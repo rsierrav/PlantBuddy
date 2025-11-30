@@ -1,13 +1,35 @@
+# --- PlatformIO build system ---
 .pio/
 .pio/*
+.pioenvs/
 .piolibdeps/
 .pio/libdeps/
-.vscode/
-.DS_Store
-*~
-*.tmp
-.venv/
 .piobuild/
+.pio-build/
+.pio-release/
+
+# --- VSCode workspace files ---
+.vscode/
+*.code-workspace
+
+# --- CMake build artifacts ---
 cmake-build/
 CMakeFiles/
 CMakeCache.txt
+
+# --- Python virtual environments ---
+.venv/
+env/
+venv/
+
+# --- OS & temporary files ---
+.DS_Store
+Thumbs.db
+*~
+*.tmp
+*.log
+
+# --- Edge Impulse extra artifacts (optional safety) ---
+*.tflite
+*.bin
+*.eim

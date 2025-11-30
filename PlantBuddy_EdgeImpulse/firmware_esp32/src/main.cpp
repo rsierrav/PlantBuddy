@@ -12,6 +12,7 @@
 #include <BH1750.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include "Plant_Buddy_inferencing.h"
 
 // -------- Pin Map --------
 static const int PIN_I2C_SDA = 21;
