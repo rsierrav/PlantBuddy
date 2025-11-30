@@ -1,23 +1,13 @@
-### PlatformIO build artifacts
-# Build output and dependency caches
 .pio/
 .pio/*
-
-# PlatformIO library dependency folder (optional to commit). Usually not committed.
 .piolibdeps/
 .pio/libdeps/
-
-### VS Code workspace files
-# Ignore user/IDE-specific settings and caches. Keep repo-level shared settings if needed.
 .vscode/
-
-# macOS
 .DS_Store
-
-# Editor backup files
 *~
-# Temporary files
 *.tmp
-
-# Python virtualenvs (if any used by project)
 .venv/
+.piobuild/
+cmake-build/
+CMakeFiles/
+CMakeCache.txt
