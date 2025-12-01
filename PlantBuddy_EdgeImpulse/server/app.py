@@ -1,19 +1,17 @@
 from flask import Flask, request, Response
-import sqlite3
-import csv
-import io
-import os
-import json
-import queue
-import threading
+import sqlite3, json, queue, threading, os
+from flask_cors import CORS
 
-DB = os.getenv(
-    "DATABASE_URL_SQLITE",
-    "plantbuddy.db",
-)  # simple override via env if you want
+# -----------------------------
+# Database file (same folder)
+# -----------------------------
+DB = "plantbuddy.db"
+
 app = Flask(__name__)
-
-
+CORS(app)
+# -----------------------------
+# Ensure DB schema exists
+# -----------------------------
 def ensure_schema():
     con = sqlite3.connect(DB)
     cur = con.cursor()
@@ -28,118 +26,94 @@ def ensure_schema():
             pump_state INTEGER,
             condition TEXT
         )
-        """)
+    """)
     con.commit()
     con.close()
 
-
+# -----------------------------
+# Insert a new row
+# -----------------------------
 def insert_row(d):
     con = sqlite3.connect(DB)
     cur = con.cursor()
-    cur.execute(
-        """
-        INSERT INTO plant_data
-        (
-            soil_moisture,
-            light_level,
-            temperature,
-            humidity,
-            pump_state,
-            condition
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            d["soil"],
-            d["light"],
-            d["temp"],
-            d["humidity"],
-            d["pump"],
-            d["condition"],
-        ),
-    )
-    con.commit()
+    try:
+        cur.execute("""
+            INSERT INTO plant_data
+            (plant_id, soil_moisture, light_level, temperature, humidity, pump_state, condition)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (d["plant_id"], d["soil"], d["light"], d["temp"], d["humidity"], d["pump"], d["condition"]))
+        con.commit()
+        print("🌱 INSERT OK", d)
+    except Exception as e:
+        print("❌ INSERT FAILED:", e)
     con.close()
-    # Notify any live-stream clients about the new row
+
+    # notify SSE subscribers
     try:
         payload = {
-            "soil": d["soil"],
-            "light": d["light"],
-            "temp": d["temp"],
-            "humidity": d["humidity"],
-            "pump": d.get("pump", 0),
-            "condition": d.get("condition", ""),
+            "soil": d["soil"], "light": d["light"], "temp": d["temp"],
+            "humidity": d["humidity"], "pump": d.get("pump", 0),
+            "condition": d.get("condition", "")
         }
         for q in list(_sse_clients):
             try:
                 q.put(payload, block=False)
-            except Exception:
-                # ignore client queue errors
+            except:
                 pass
-    except Exception:
+    except:
         pass
 
+# SSE storage
+_sse_clients, _sse_lock = [], threading.Lock()
 
-# Ensure DB schema exists even when launched via `flask run`
-ensure_schema()
-
-# Simple SSE (server-sent events) support: hold small queues per connected client
-_sse_clients = []  # list of queue.Queue
-_sse_lock = threading.Lock()
-
-
+# -----------------------------
+# Basic health route
+# -----------------------------
 @app.get("/")
 def root():
     return {"ok": True, "service": "plant-buddy-data-server"}
-
 
 @app.get("/health")
 def health():
     return {"status": "healthy"}
 
-
+# -----------------------------
+# Ingest JSON from ESP32
+# -----------------------------
 @app.post("/ingest")
 def ingest():
-    # Parse JSON safely
     raw = request.get_json(silent=True)
     if not raw:
         return {"error": "invalid or missing JSON body"}, 400
 
-    # Normalize incoming keys (accept short or verbose names)
+    print("📡 Incoming data:", raw)
+
     data = {
-        "soil": (raw.get("soil") or raw.get("soil_moisture_pct")
-                 or raw.get("soil_moisture_raw")),
-        "light": (raw.get("light") or raw.get("light_lux") or raw.get("ldr")),
-        "temp": (raw.get("temp") or raw.get("temperature")
-                 or raw.get("temperature_c")),
-        "humidity": (raw.get("humidity") or raw.get("hum")
-                     or raw.get("humidity_pct")),
-        "pump":
-        raw.get("pump", 0),
-        "condition":
-        raw.get("condition", "ok"),
+        "plant_id": raw.get("plant_id", "unknown"),
+        "soil": raw.get("soil") or raw.get("soil_moisture_pct"),
+        "light": raw.get("light") or raw.get("light_lux"),
+        "temp": raw.get("temp") or raw.get("temperature"),
+        "humidity": raw.get("humidity") or raw.get("hum"),
+        "pump": raw.get("pump") or raw.get("pump_state") or 0,
+        "condition": raw.get("condition", "ok"),
     }
 
-    # Validate required fields
-    missing = [
-        k for k in ("soil", "light", "temp", "humidity") if data.get(k) is None
-    ]
-    if missing:
-        return {"error": f"missing fields: {', '.join(missing)}"}, 400
+    if any(v is None for v in (data["soil"], data["light"], data["temp"], data["humidity"])):
+        return {"error": "missing required fields"}, 400
 
     insert_row(data)
     return {"ok": True}, 200
 
-
-@app.get('/stream')
+# -----------------------------
+# LIVE stream (SSE)
+# -----------------------------
+@app.get("/stream")
 def stream():
-
     def gen(q):
         try:
             while True:
                 data = q.get()
-                ev = 'data: ' + json.dumps(data) + '\n\n'
-                yield ev
+                yield 'data: ' + json.dumps(data) + '\n\n'
         except GeneratorExit:
             return
 
@@ -149,122 +123,53 @@ def stream():
 
     return Response(gen(q), mimetype='text/event-stream')
 
+# --------------------------------------------------------
+# ⭐ FIXED LOCATION — REGISTERED BEFORE app.run()
+# --------------------------------------------------------
+@app.get("/latest")
+def latest():
+    plant = request.args.get("plant")     # <-- get plant name from URL
 
-@app.get('/live')
-def live_ui():
-    # Serve the simple HTML UI for live streaming and labeling
-    return app.send_static_file('index.html')
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
 
+    if plant:
+        # return latest reading for a specific plant
+        cur.execute("""
+            SELECT timestamp, soil_moisture, light_level, temperature, humidity, pump_state, condition
+            FROM plant_data
+            WHERE plant_id = ?
+            ORDER BY id DESC LIMIT 1
+        """, (plant,))
+    else:
+        # default behavior (latest overall)
+        cur.execute("""
+            SELECT timestamp, soil_moisture, light_level, temperature, humidity, pump_state, condition
+            FROM plant_data
+            ORDER BY id DESC LIMIT 1
+        """)
 
-@app.post("/label")
-def insert_labeled():
-    """Insert a labeled training sample.
-    Accepts JSON with soil, light, temp, humidity, label.
-    """
-    raw = request.get_json(silent=True)
-    if not raw:
-        return {"error": "invalid or missing JSON body"}, 400
+    row = cur.fetchone()
+    con.close()
 
-    data = {
-        "soil": raw.get("soil"),
-        "light": raw.get("light"),
-        "temp": raw.get("temp"),
-        "humidity": raw.get("humidity"),
-        "pump": raw.get("pump", 0),
-        "condition": raw.get("label") or raw.get("condition") or "",
+    if not row:
+        return {"error": "no data yet"}, 404
+
+    return {
+        "timestamp": row[0],
+        "soil": row[1],
+        "light": row[2],
+        "temp": row[3],
+        "humidity": row[4],
+        "pump": row[5],
+        "condition": row[6],
     }
 
-    missing = [
-        k for k in ("soil", "light", "temp", "humidity") if data.get(k) is None
-    ]
-    if missing:
-        return {"error": f"missing fields: {', '.join(missing)}"}, 400
 
-    insert_row(data)
-    return {"ok": True}, 200
-
-
-@app.get("/export-ei-csv")
-def export_ei_csv():
-    """
-    Export CSV formatted for Edge Impulse ingestion:
-    columns soil, light, temp, humidity, label
-    """
-    con = sqlite3.connect(DB)
-    cur = con.cursor()
-    cur.execute("""
-        SELECT
-            soil_moisture,
-            light_level,
-            temperature,
-            humidity,
-            condition
-        FROM plant_data
-        ORDER BY timestamp
-        """)
-    rows = cur.fetchall()
-    con.close()
-
-    out = io.StringIO()
-    w = csv.writer(out)
-    w.writerow(["soil", "light", "temp", "humidity", "label"])
-    # Convert None/NULL labels to empty string
-    for r in rows:
-        w.writerow([r[0], r[1], r[2], r[3], r[4] or ""])
-
-    return Response(
-        out.getvalue(),
-        mimetype="text/csv",
-        headers={
-            "Content-Disposition":
-            ("attachment; filename=plant_data_for_ei.csv")
-        },
-    )
-
-
-@app.get("/export-csv")
-def export_csv():
-    con = sqlite3.connect(DB)
-    cur = con.cursor()
-    cur.execute("""
-        SELECT
-            timestamp,
-            soil_moisture,
-            light_level,
-            temperature,
-            humidity,
-            pump_state,
-            condition
-        FROM plant_data
-        ORDER BY timestamp
-        """)
-    rows = cur.fetchall()
-    con.close()
-
-    out = io.StringIO()
-    w = csv.writer(out)
-    w.writerow([
-        "timestamp",
-        "soil_moisture",
-        "light_level",
-        "temperature",
-        "humidity",
-        "pump_state",
-        "condition",
-    ])
-    w.writerows(rows)
-
-    return Response(
-        out.getvalue(),
-        mimetype="text/csv",
-        headers={
-            "Content-Disposition":
-            ("attachment; filename=plant_data_for_ei.csv")
-        },
-    )
-
-
+# -----------------------------
+# Run server
+# -----------------------------
 if __name__ == "__main__":
-    # Running via `python app.py`
     ensure_schema()
+    print("🚀 Starting PlantBuddy backend on http://127.0.0.1:5000")
     app.run(host="0.0.0.0", port=5000)
