@@ -144,12 +144,12 @@ const ei_impulse_t impulse_827660_1 = {
     .project_name = "Plant Buddy",
     .impulse_id = 1,
     .impulse_name = "Impulse #1",
-    .deploy_version = 2,
+    .deploy_version = 4,
 
     .nn_input_frame_size = 35,
-    .raw_sample_count = 5,
+    .raw_sample_count = 1,
     .raw_samples_per_frame = 5,
-    .dsp_input_frame_size = 5 * 5,
+    .dsp_input_frame_size = 1 * 5,
     .input_width = 0,
     .input_height = 0,
     .input_frames = 0,
@@ -171,7 +171,7 @@ const ei_impulse_t impulse_827660_1 = {
 
     .sensor = EI_CLASSIFIER_SENSOR_FUSION,
     .fusion_string = "soil + light + temp + humidity + pump_state",
-    .slice_size = (5/4),
+    .slice_size = (1/4),
     .slices_per_model_window = 4,
 
     .has_anomaly = EI_ANOMALY_TYPE_UNKNOWN,
