@@ -3,7 +3,7 @@
  * Includes: BME680, BH1750, Soil Moisture ADC, DHT22,
  * LCD, Pump Relay, Wi-Fi JSON POST, and EI CSV Output
  ******************************************************/
-#define CLEAN_SERIAL
+// #define CLEAN_SERIAL // Uncomment to enable CSV output for Edge Impulse data collection
 
 #include <Wire.h>
 #include <Adafruit_BME680.h>
@@ -12,6 +12,7 @@
 #include <BH1750.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include "Plant_Buddy_inferencing.h"
 
 // -------- Pin Map --------
 static const int PIN_I2C_SDA = 21;
@@ -132,46 +133,6 @@ bool initBME680()
   return true;
 }
 
-void setup()
-{
-  pinMode(PIN_RELAY, OUTPUT);
-  setRelay(false);
-
-  pinMode(PIN_LED_RED, OUTPUT);
-  pinMode(PIN_LED_GRN, OUTPUT);
-  ledsERR();
-
-  pinMode(PIN_BUZZ, OUTPUT);
-  digitalWrite(PIN_BUZZ, LOW);
-
-  analogReadResolution(12);
-
-  Serial.begin(115200);
-  delay(100);
-
-  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-
-  bool lightOK = lightMeter.begin(BH1750::CONTINUOUS_HIGH_RES_MODE);
-
-  bool lcdOK = initLCD();
-
-  dht.begin();
-  bool bmeOK = initBME680();
-
-  if (bmeOK)
-    ledsOK();
-
-  unsigned long wifiStart = millis();
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-
-  while (WiFi.status() != WL_CONNECTED && (millis() - wifiStart) < 10000)
-  {
-    delay(500);
-  }
-
-  lastReadMs = millis();
-}
-
 struct Readings
 {
   float tempC;
@@ -263,6 +224,146 @@ void maybeWater(const Readings &r)
   }
 }
 
+// ====== Edge Impulse Classifier Integration ======
+//
+// Model expects 5 inputs in this order:
+//   [soil, light, temp, humidity, pump_state]
+//
+void run_edge_impulse_classifier(float soil,
+                                 float light,
+                                 float temp,
+                                 float hum,
+                                 float pump_state)
+{
+  // Sanity check
+  if (EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE != 5)
+  {
+#ifndef CLEAN_SERIAL
+    Serial.print("ERROR: Model expects ");
+    Serial.print(EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
+    Serial.println(" features, but code assumes 5.");
+#endif
+    return;
+  }
+
+  float features[EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE];
+
+  // Feature order must match Edge Impulse model:
+  // soil, light, temp, humidity, pump_state
+  features[0] = safeFloat(soil);
+  features[1] = safeFloat(light);
+  features[2] = safeFloat(temp);
+  features[3] = safeFloat(hum);
+  features[4] = safeFloat(pump_state);
+
+  // Wrap the buffer in an Edge Impulse signal_t
+  signal_t signal;
+  int err = numpy::signal_from_buffer(
+      features,
+      EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE,
+      &signal);
+  if (err != 0)
+  {
+#ifndef CLEAN_SERIAL
+    Serial.print("signal_from_buffer failed: ");
+    Serial.println(err);
+#endif
+    return;
+  }
+
+  // Run the classifier
+  ei_impulse_result_t result = {0};
+  EI_IMPULSE_ERROR ei_err = run_classifier(
+      &signal,
+      &result,
+      /* debug = */ false);
+
+  if (ei_err != EI_IMPULSE_OK)
+  {
+#ifndef CLEAN_SERIAL
+    Serial.print("run_classifier failed: ");
+    Serial.println(ei_err);
+#endif
+    return;
+  }
+
+  // Pick highest-confidence class
+  size_t best_i = 0;
+  float best_val = 0.0f;
+
+  for (size_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++)
+  {
+    if (result.classification[i].value > best_val)
+    {
+      best_val = result.classification[i].value;
+      best_i = i;
+    }
+  }
+
+#ifndef CLEAN_SERIAL
+  Serial.print("Predicted: ");
+  Serial.print(result.classification[best_i].label);
+  Serial.print(" (");
+  Serial.print(best_val, 2);
+  Serial.println(")");
+#endif
+}
+
+void setup()
+{
+  pinMode(PIN_RELAY, OUTPUT);
+  setRelay(false);
+
+  pinMode(PIN_LED_RED, OUTPUT);
+  pinMode(PIN_LED_GRN, OUTPUT);
+  ledsERR();
+
+  pinMode(PIN_BUZZ, OUTPUT);
+  digitalWrite(PIN_BUZZ, LOW);
+
+  analogReadResolution(12);
+
+  Serial.begin(115200);
+  delay(100);
+
+  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+
+  bool lightOK = lightMeter.begin(BH1750::CONTINUOUS_HIGH_RES_MODE);
+  bool lcdOK = initLCD();
+
+  dht.begin();
+  bool bmeOK = initBME680();
+
+  if (bmeOK)
+    ledsOK();
+
+  bool enableWiFi = false; // user choice
+
+  Serial.println("Wi-Fi auto-connect starting...");
+
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  unsigned long wifiStart = millis();
+
+  while (WiFi.status() != WL_CONNECTED && (millis() - wifiStart) < 10000)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    Serial.println("\nWi-Fi connected!");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+  }
+  else
+  {
+    Serial.println("\nWi-Fi connection failed. Continuing offline.");
+  }
+
+  lastReadMs = millis();
+}
+
 void loop()
 {
   unsigned long now = millis();
@@ -272,12 +373,30 @@ void loop()
 
     Readings r = readAll();
 
-    // Edge Impulse Line
+    // ===== Data collection mode (Edge Impulse CSV) =====
+#ifdef CLEAN_SERIAL
     printForEdgeImpulse(r);
+#endif
 
-    // LCD + watering
+    // LCD + watering logic
     showOnLCD(r);
     maybeWater(r);
+
+    // ===== Inference mode (when CLEAN_SERIAL is *not* defined) =====
+#ifndef CLEAN_SERIAL
+    // Prepare features for the classifier
+    float temp = r.bmeOK ? r.tempC : (r.dhtOK ? r.dhtTempC : 0.0f);
+    float hum = r.bmeOK ? r.humidity : (r.dhtOK ? r.dhtHum : 0.0f);
+    float pump_val = pumpState ? 1.0f : 0.0f;
+
+    run_edge_impulse_classifier(
+        (float)r.soilRaw, // soil
+        r.lux,            // light
+        temp,             // temp
+        hum,              // humidity
+        pump_val          // pump_state
+    );
+#endif
 
     // ------- Wi-Fi JSON POST -------
     if (WiFi.status() == WL_CONNECTED)
@@ -290,6 +409,7 @@ void loop()
       float hum = r.bmeOK ? r.humidity : (r.dhtOK ? r.dhtHum : 0.0f);
 
       String payload = "{";
+      payload += "\"plant_id\":\"haworthia\","; // <--- ADD THIS LINE
       payload += "\"soil\":" + String(r.soilRaw) + ",";
       payload += "\"light\":" + String(r.lux, 2) + ",";
       payload += "\"temp\":" + String(temp, 2) + ",";

@@ -96,6 +96,25 @@
   </div>
 
 </div>
+<script>
+  async function loadData() {
+    try {
+      const res = await fetch("http://127.0.0.1:5000/latest?plant=fittonia");
+      const data = await res.json();
 
+      document.getElementById("soil").textContent = data.soil;
+      document.getElementById("light").textContent = data.light;
+      document.getElementById("temp").textContent = data.temp;
+      document.getElementById("humidity").textContent = data.humidity;
+      document.getElementById("pump").textContent = data.pump === 1 ? "ON" : "OFF";
+      document.getElementById("condition").textContent = data.condition;
+    } catch (err) {
+      console.log("Error fetching live data:", err);
+    }
+  }
+
+  setInterval(loadData, 2000);
+  loadData();
+</script>
 </body>
 </html>
