@@ -2,11 +2,8 @@
  * Plant Buddy – ESP32 all-in-one demo (Edge Impulse–Safe Version)
  * Includes: BME680, BH1750, Soil Moisture ADC, DHT22,
  * LCD, Pump Relay, Wi-Fi JSON POST, and EI CSV Output
- * Plant Buddy – ESP32 all-in-one demo (Edge Impulse–Safe Version)
- * Includes: BME680, BH1750, Soil Moisture ADC, DHT22,
- * LCD, Pump Relay, Wi-Fi JSON POST, and EI CSV Output
  ******************************************************/
-// // #define CLEAN_SERIAL // Uncomment to enable CSV output for Edge Impulse data collection // Uncomment to enable CSV output for Edge Impulse data collection
+// #define CLEAN_SERIAL // Uncomment to enable CSV output for Edge Impulse data collection
 
 #include <Wire.h>
 #include <Adafruit_BME680.h>
@@ -16,16 +13,12 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include "Plant_Buddy_inferencing.h"
-#include "Plant_Buddy_inferencing.h"
 
 // -------- Pin Map --------
 static const int PIN_I2C_SDA = 21;
 static const int PIN_I2C_SCL = 22;
 
 static const int PIN_SOIL_ADC = 34; // ADC1 only-input
-
-static const int PIN_RELAY = 17; // Active-LOW
-static const int PIN_DHT = 27;
 
 static const int PIN_RELAY = 17; // Active-LOW
 static const int PIN_DHT = 27;
@@ -47,15 +40,7 @@ LiquidCrystal_I2C lcd(LCD_ADDR, LCD_COLS, LCD_ROWS);
 Adafruit_BME680 bme;
 DHT dht(PIN_DHT, DHTTYPE);
 BH1750 lightMeter;
-Adafruit_BME680 bme;
-DHT dht(PIN_DHT, DHTTYPE);
-BH1750 lightMeter;
 
-// -------- Config --------
-static const int SOIL_DRY_THRESHOLD = 1800;
-static const int WATER_MS = 3000;
-static const long WATER_COOLDOWN_MS = 60L * 1000L;
-static const unsigned long READ_MS = 2000;
 // -------- Config --------
 static const int SOIL_DRY_THRESHOLD = 1800;
 static const int WATER_MS = 3000;
@@ -87,30 +72,10 @@ int safeAnalogRead(int pin)
   if (v > 4095)
     return 4095;
   return v;
-  // ====== SANITIZATION FUNCTIONS (Fix NaN Issues) ======
-  int safeAnalogRead(int pin)
-  {
-    int v = analogRead(pin);
-    if (isnan(v) || v < 0 || v > 4095)
-    {
-      delay(5);
-      v = analogRead(pin);
-    }
-    if (isnan(v) || v < 0)
-      return 0;
-    if (v > 4095)
-      return 4095;
-    return v;
-  }
+}
 
-  float safeFloat(float x)
-
-      float safeFloat(float x)
-  {
-    return (isnan(x) || isinf(x)) ? 0.0f : x;
-  }
-
-  // -------- Pump Relay --------
+float safeFloat(float x)
+{
   return (isnan(x) || isinf(x)) ? 0.0f : x;
 }
 
@@ -165,7 +130,6 @@ bool initBME680()
   bme.setPressureOversampling(BME680_OS_4X);
   bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
   bme.setGasHeater(0, 0);
-  bme.setGasHeater(0, 0);
   return true;
 }
 
@@ -176,12 +140,8 @@ struct Readings
   float pressure_hPa;
   int soilRaw;
   float lux;
-  int soilRaw;
-  float lux;
   float dhtTempC;
   float dhtHum;
-  bool bmeOK;
-  bool dhtOK;
   bool bmeOK;
   bool dhtOK;
 };
@@ -191,12 +151,7 @@ Readings readAll()
   Readings r{};
 
   r.soilRaw = safeAnalogRead(PIN_SOIL_ADC);
-  r.soilRaw = safeAnalogRead(PIN_SOIL_ADC);
 
-  float lux = lightMeter.readLightLevel();
-  if (lux < 0)
-    lux = 0;
-  r.lux = safeFloat(lux);
   float lux = lightMeter.readLightLevel();
   if (lux < 0)
     lux = 0;
@@ -208,13 +163,8 @@ Readings readAll()
     r.tempC = safeFloat(bme.temperature);
     r.humidity = safeFloat(bme.humidity);
     r.pressure_hPa = safeFloat(bme.pressure / 100.0f);
-    r.tempC = safeFloat(bme.temperature);
-    r.humidity = safeFloat(bme.humidity);
-    r.pressure_hPa = safeFloat(bme.pressure / 100.0f);
   }
 
-  r.dhtTempC = safeFloat(dht.readTemperature());
-  r.dhtHum = safeFloat(dht.readHumidity());
   r.dhtTempC = safeFloat(dht.readTemperature());
   r.dhtHum = safeFloat(dht.readHumidity());
   r.dhtOK = !(isnan(r.dhtTempC) || isnan(r.dhtHum));
@@ -230,8 +180,6 @@ void showOnLCD(const Readings &r)
 
   snprintf(line2, sizeof(line2), "T:%4.1fC H:%2.0f%%",
            safeFloat(r.tempC), safeFloat(r.humidity));
-  snprintf(line2, sizeof(line2), "T:%4.1fC H:%2.0f%%",
-           safeFloat(r.tempC), safeFloat(r.humidity));
 
   lcd.setCursor(0, 0);
   lcd.print(line1);
@@ -241,23 +189,18 @@ void showOnLCD(const Readings &r)
 }
 
 // ====== Edge Impulse CSV OUTPUT (Sanitized) ======
-// ====== Edge Impulse CSV OUTPUT (Sanitized) ======
 void printForEdgeImpulse(const Readings &r)
 {
   float temp = r.bmeOK ? r.tempC : (r.dhtOK ? r.dhtTempC : 0.0f);
   float hum = r.bmeOK ? r.humidity : (r.dhtOK ? r.dhtHum : 0.0f);
 
   Serial.print(safeAnalogRead(PIN_SOIL_ADC));
-  float temp = r.bmeOK ? r.tempC : (r.dhtOK ? r.dhtTempC : 0.0f);
-  float hum = r.bmeOK ? r.humidity : (r.dhtOK ? r.dhtHum : 0.0f);
-
-  Serial.print(safeAnalogRead(PIN_SOIL_ADC));
   Serial.print(',');
-  Serial.print(safeFloat(safeFloat(r.lux)), 2);
+  Serial.print(safeFloat(r.lux), 2);
   Serial.print(',');
-  Serial.print(safeFloat(safeFloat(temp)), 2);
+  Serial.print(safeFloat(temp), 2);
   Serial.print(',');
-  Serial.print(safeFloat(safeFloat(hum)), 2);
+  Serial.print(safeFloat(hum), 2);
   Serial.print(',');
   Serial.println(pumpState ? 1 : 0);
 }
@@ -266,10 +209,6 @@ void maybeWater(const Readings &r)
 {
   unsigned long now = millis();
 
-  bool isDry = (r.soilRaw > SOIL_DRY_THRESHOLD);
-
-  digitalWrite(PIN_LED_RED, isDry ? HIGH : LOW);
-  digitalWrite(PIN_LED_GRN, isDry ? LOW : HIGH);
   bool isDry = (r.soilRaw > SOIL_DRY_THRESHOLD);
 
   digitalWrite(PIN_LED_RED, isDry ? HIGH : LOW);
@@ -436,13 +375,9 @@ void loop()
 
     // ===== Data collection mode (Edge Impulse CSV) =====
 #ifdef CLEAN_SERIAL
-    // ===== Data collection mode (Edge Impulse CSV) =====
-#ifdef CLEAN_SERIAL
     printForEdgeImpulse(r);
 #endif
-#endif
 
-    // LCD + watering logic
     // LCD + watering logic
     showOnLCD(r);
     maybeWater(r);
@@ -472,22 +407,17 @@ void loop()
 
       float temp = r.bmeOK ? r.tempC : (r.dhtOK ? r.dhtTempC : 0.0f);
       float hum = r.bmeOK ? r.humidity : (r.dhtOK ? r.dhtHum : 0.0f);
-      float temp = r.bmeOK ? r.tempC : (r.dhtOK ? r.dhtTempC : 0.0f);
-      float hum = r.bmeOK ? r.humidity : (r.dhtOK ? r.dhtHum : 0.0f);
 
       String payload = "{";
       payload += "\"plant_id\":\"haworthia\","; // <--- ADD THIS LINE
       payload += "\"soil\":" + String(r.soilRaw) + ",";
       payload += "\"light\":" + String(r.lux, 2) + ",";
-      payload += "\"light\":" + String(r.lux, 2) + ",";
       payload += "\"temp\":" + String(temp, 2) + ",";
       payload += "\"humidity\":" + String(hum, 2) + ",";
-      payload += "\"pump_state\":" + String(pumpState ? 1 : 0) + ",";
       payload += "\"pump_state\":" + String(pumpState ? 1 : 0) + ",";
       payload += "\"condition\":\"" + String((r.soilRaw > SOIL_DRY_THRESHOLD) ? "dry" : "ok") + "\"";
       payload += "}";
 
-      http.POST(payload);
       http.POST(payload);
       http.end();
     }
