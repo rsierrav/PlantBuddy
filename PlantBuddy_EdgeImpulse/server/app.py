@@ -18,6 +18,7 @@ def ensure_schema():
     cur.execute("""
         CREATE TABLE IF NOT EXISTS plant_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plant_id TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             soil_moisture REAL,
             light_level REAL,

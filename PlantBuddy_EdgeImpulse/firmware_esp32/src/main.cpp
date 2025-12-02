@@ -43,13 +43,13 @@ DHT dht(PIN_DHT, DHTTYPE);
 BH1750 lightMeter;
 
 // -------- Config --------
-static const int SOIL_DRY_THRESHOLD = 1800;
 static const int WATER_MS = 3000;
 static const long WATER_COOLDOWN_MS = 60L * 1000L;
 static const unsigned long READ_MS = 2000;
 static const bool RELAY_ACTIVE_LOW = true;
 // AI + watering tuning
 static const int SOIL_SAFETY_WET = 1600;     // Below this, never water (soil clearly moist)
+static const int SOIL_DRY_THRESHOLD = 2100; // at or above this = clearly dry (adjust after testing)
 static const float AI_CONF_THRESHOLD = 0.6f; // How sure AI must be to trigger watering
 
 // -------- State --------
@@ -175,36 +175,84 @@ Readings readAll()
   return r;
 }
 
+// ====== Condition Computation ======
+struct ConditionState {
+  String label;      // "fine" or "needs_water"   -> for dashboard / logic
+  bool warnDry;      // whether LED should be red
+  bool shouldWater;  // whether pump is allowed to run
+};
+
+// Decide the overall plant state from soil + AI
+ConditionState computeCondition(const Readings &r) {
+  ConditionState cs;
+
+  bool soilClearlyWet  = (r.soilRaw <= SOIL_SAFETY_WET);
+  bool soilMaybeDry    = (r.soilRaw >= SOIL_DRY_THRESHOLD);  // stricter dry
+  bool aiSaysDry       = (last_ai_label == "needs_water" &&
+                          last_ai_conf >= AI_CONF_THRESHOLD);
+
+  // Default: happy
+  cs.label       = "fine";
+  cs.warnDry     = false;
+  cs.shouldWater = false;
+
+  // 1) WET ZONE: soil clearly wet → plant is happy, AI is ignored
+  if (soilClearlyWet) {
+    cs.label       = "fine";        // dashboard: happy
+    cs.warnDry     = false;         // LED green
+    cs.shouldWater = false;         // pump off
+  }
+  // 2) DRY ZONE: soil clearly dry → ask AI to confirm
+  else if (soilMaybeDry) {
+    if (aiSaysDry) {
+      cs.label       = "needs_water"; // dashboard + LCD say "needs water"
+      cs.warnDry     = true;          // LED red
+      cs.shouldWater = true;          // pump allowed (will still respect cooldown)
+    } else {
+      cs.label       = "fine";        // AI doesn't agree → stay safe
+      cs.warnDry     = false;
+      cs.shouldWater = false;
+    }
+  }
+  // 3) MIDDLE ZONE: kind of moist → call it fine and DO NOT WATER
+  else {
+    // between 1600 and 2100
+    cs.label       = "fine";        // everyone says plant is fine
+    cs.warnDry     = false;         // LED green
+    cs.shouldWater = false;         // pump off even if AI says dry
+  }
+
+  return cs;
+}
+
 // ====== LCD DISPLAY ======
 void showOnLCD(const Readings &r)
 {
   char line1[17], line2[17];
 
-  // Line 1: soil + light
   snprintf(line1, sizeof(line1), "So:%4d L:%4.0f", r.soilRaw, r.lux);
 
-  // Map AI label to short status text
+  // Use the same condition as LEDs + pump + dashboard
+  ConditionState cs = computeCondition(r);
+
   const char *status;
-  if (last_ai_label == "fine") {
-    status = "OK";
-  } else if (last_ai_label == "needs_water") {
+  if (cs.label == "needs_water") {
     status = "WATER";
   } else {
-    status = "...";
+    status = "OK";
   }
 
-  // Line 2: temp + status (fits 16 chars)
   snprintf(line2, sizeof(line2), "T:%4.1fC %s",
            safeFloat(r.tempC),
            status);
 
   lcd.setCursor(0, 0);
-  lcd.print("                "); // clear line
+  lcd.print("                ");
   lcd.setCursor(0, 0);
   lcd.print(line1);
 
   lcd.setCursor(0, 1);
-  lcd.print("                "); // clear line
+  lcd.print("                ");
   lcd.setCursor(0, 1);
   lcd.print(line2);
 }
@@ -231,32 +279,14 @@ void maybeWater(const Readings &r)
 {
   unsigned long now = millis();
 
-  // 1) What does the raw soil number say?
-  bool soilSaysDry = (r.soilRaw > SOIL_DRY_THRESHOLD); // > 1800 means dry by your rule
+  ConditionState cs = computeCondition(r);
 
-  // 2) What does the AI say?
-  bool aiSaysDry = false;
-  if (last_ai_label == "needs_water" && last_ai_conf >= AI_CONF_THRESHOLD) {
-    aiSaysDry = true;
-  }
+  // LEDs from condition
+  digitalWrite(PIN_LED_RED, cs.warnDry ? HIGH : LOW);
+  digitalWrite(PIN_LED_GRN, cs.warnDry ? LOW  : HIGH);
 
-  // 3) Combine them:
-  //    We only water if BOTH think it's dry.
-  bool shouldWater = aiSaysDry && soilSaysDry;
-
-  // 4) Safety: if soil looks clearly moist, never water
-  if (r.soilRaw < SOIL_SAFETY_WET) {
-    shouldWater = false;
-  }
-
-  // 5) Drive LEDs based on "is it at least kinda dry?"
-  bool warnDry = soilSaysDry || aiSaysDry;
-
-  digitalWrite(PIN_LED_RED, warnDry ? HIGH : LOW);
-  digitalWrite(PIN_LED_GRN, warnDry ? LOW : HIGH);
-
-  // 6) Actually run the pump if we decided it's needed and cooldown passed
-  if (shouldWater && (now - lastWaterActionMs >= WATER_COOLDOWN_MS))
+  // Only water if condition says it's OK AND cooldown passed
+  if (cs.shouldWater && (now - lastWaterActionMs >= WATER_COOLDOWN_MS))
   {
     Serial.print("WATERING: soil=");
     Serial.print(r.soilRaw);
@@ -464,6 +494,8 @@ void loop()
       float temp = r.bmeOK ? r.tempC : (r.dhtOK ? r.dhtTempC : 0.0f);
       float hum = r.bmeOK ? r.humidity : (r.dhtOK ? r.dhtHum : 0.0f);
 
+      ConditionState cs = computeCondition(r);
+
       String payload = "{";
       payload += "\"plant_id\":\"haworthia\",";
       payload += "\"soil\":" + String(r.soilRaw) + ",";
@@ -472,15 +504,14 @@ void loop()
       payload += "\"humidity\":" + String(hum, 2) + ",";
       payload += "\"pump_state\":" + String(pumpState ? 1 : 0) + ",";
 
-      String conditionLabel;
-      // If we have a prediction, use it, else fall back to rule
-      if (last_ai_label == "fine" || last_ai_label == "needs_water") {
-        conditionLabel = last_ai_label;
-      } else {
-        conditionLabel = (r.soilRaw > SOIL_DRY_THRESHOLD) ? "needs_water" : "fine";
-      }
-      payload += "\"condition\":\"" + conditionLabel + "\"";
+      // Use the same condition everywhere
+      payload += "\"condition\":\"" + cs.label + "\",";
+
+      // Optional: still send raw AI info for debugging
+      payload += "\"ai_label\":\"" + last_ai_label + "\",";
+      payload += "\"ai_conf\":" + String(last_ai_conf, 2);
       payload += "}";
+
 
       http.POST(payload);
       http.end();
