@@ -34,4 +34,5 @@ Thumbs.db
 *.bin
 *.eim
 
-secrets.h
+# --- Ignore secrets file ---
+src/secrets.h

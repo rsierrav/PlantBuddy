@@ -12,7 +12,8 @@
 #include <BH1750.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include "Plant_Buddy_inferencing.h"
+#include "plantBuddy_inferencing.h"
+#include "secrets.h"
 
 // -------- Pin Map --------
 static const int PIN_I2C_SDA = 21;
@@ -42,16 +43,23 @@ DHT dht(PIN_DHT, DHTTYPE);
 BH1750 lightMeter;
 
 // -------- Config --------
-static const int SOIL_DRY_THRESHOLD = 1800;
 static const int WATER_MS = 3000;
 static const long WATER_COOLDOWN_MS = 60L * 1000L;
 static const unsigned long READ_MS = 2000;
 static const bool RELAY_ACTIVE_LOW = true;
+// AI + watering tuning
+static const int SOIL_SAFETY_WET = 1600;     // Below this, never water (soil clearly moist)
+static const int SOIL_DRY_THRESHOLD = 2100; // at or above this = clearly dry (adjust after testing)
+static const float AI_CONF_THRESHOLD = 0.6f; // How sure AI must be to trigger watering
 
 // -------- State --------
 unsigned long lastReadMs = 0;
 unsigned long lastWaterActionMs = 0;
 bool pumpState = false;
+
+String last_ai_label = "unknown";
+float last_ai_conf = 0.0f;
+
 
 // ====== SANITIZATION FUNCTIONS (Fix NaN Issues) ======
 int safeAnalogRead(int pin)
@@ -167,18 +175,84 @@ Readings readAll()
   return r;
 }
 
+// ====== Condition Computation ======
+struct ConditionState {
+  String label;      // "fine" or "needs_water"   -> for dashboard / logic
+  bool warnDry;      // whether LED should be red
+  bool shouldWater;  // whether pump is allowed to run
+};
+
+// Decide the overall plant state from soil + AI
+ConditionState computeCondition(const Readings &r) {
+  ConditionState cs;
+
+  bool soilClearlyWet  = (r.soilRaw <= SOIL_SAFETY_WET);
+  bool soilMaybeDry    = (r.soilRaw >= SOIL_DRY_THRESHOLD);  // stricter dry
+  bool aiSaysDry       = (last_ai_label == "needs_water" &&
+                          last_ai_conf >= AI_CONF_THRESHOLD);
+
+  // Default: happy
+  cs.label       = "fine";
+  cs.warnDry     = false;
+  cs.shouldWater = false;
+
+  // 1) WET ZONE: soil clearly wet → plant is happy, AI is ignored
+  if (soilClearlyWet) {
+    cs.label       = "fine";        // dashboard: happy
+    cs.warnDry     = false;         // LED green
+    cs.shouldWater = false;         // pump off
+  }
+  // 2) DRY ZONE: soil clearly dry → ask AI to confirm
+  else if (soilMaybeDry) {
+    if (aiSaysDry) {
+      cs.label       = "needs_water"; // dashboard + LCD say "needs water"
+      cs.warnDry     = true;          // LED red
+      cs.shouldWater = true;          // pump allowed (will still respect cooldown)
+    } else {
+      cs.label       = "fine";        // AI doesn't agree → stay safe
+      cs.warnDry     = false;
+      cs.shouldWater = false;
+    }
+  }
+  // 3) MIDDLE ZONE: kind of moist → call it fine and DO NOT WATER
+  else {
+    // between 1600 and 2100
+    cs.label       = "fine";        // everyone says plant is fine
+    cs.warnDry     = false;         // LED green
+    cs.shouldWater = false;         // pump off even if AI says dry
+  }
+
+  return cs;
+}
+
+// ====== LCD DISPLAY ======
 void showOnLCD(const Readings &r)
 {
   char line1[17], line2[17];
 
   snprintf(line1, sizeof(line1), "So:%4d L:%4.0f", r.soilRaw, r.lux);
 
-  snprintf(line2, sizeof(line2), "T:%4.1fC H:%2.0f%%",
-           safeFloat(r.tempC), safeFloat(r.humidity));
+  // Use the same condition as LEDs + pump + dashboard
+  ConditionState cs = computeCondition(r);
 
+  const char *status;
+  if (cs.label == "needs_water") {
+    status = "WATER";
+  } else {
+    status = "OK";
+  }
+
+  snprintf(line2, sizeof(line2), "T:%4.1fC %s",
+           safeFloat(r.tempC),
+           status);
+
+  lcd.setCursor(0, 0);
+  lcd.print("                ");
   lcd.setCursor(0, 0);
   lcd.print(line1);
 
+  lcd.setCursor(0, 1);
+  lcd.print("                ");
   lcd.setCursor(0, 1);
   lcd.print(line2);
 }
@@ -200,43 +274,60 @@ void printForEdgeImpulse(const Readings &r)
   Serial.println(pumpState ? 1 : 0);
 }
 
+// ====== Watering Logic ======
 void maybeWater(const Readings &r)
 {
   unsigned long now = millis();
 
-  bool isDry = (r.soilRaw > SOIL_DRY_THRESHOLD);
+  ConditionState cs = computeCondition(r);
 
-  digitalWrite(PIN_LED_RED, isDry ? HIGH : LOW);
-  digitalWrite(PIN_LED_GRN, isDry ? LOW : HIGH);
+  // LEDs from condition
+  digitalWrite(PIN_LED_RED, cs.warnDry ? HIGH : LOW);
+  digitalWrite(PIN_LED_GRN, cs.warnDry ? LOW  : HIGH);
 
-  if (isDry && (now - lastWaterActionMs >= WATER_COOLDOWN_MS))
+  // Only water if condition says it's OK AND cooldown passed
+  if (cs.shouldWater && (now - lastWaterActionMs >= WATER_COOLDOWN_MS))
   {
+    Serial.print("WATERING: soil=");
+    Serial.print(r.soilRaw);
+    Serial.print(" AI=");
+    Serial.print(last_ai_label);
+    Serial.print(" conf=");
+    Serial.println(last_ai_conf, 2);
+
     setRelay(true);
     beep(60);
     delay(WATER_MS);
     setRelay(false);
     lastWaterActionMs = millis();
   }
+  else
+  {
+    Serial.print("NO WATER: soil=");
+    Serial.print(r.soilRaw);
+    Serial.print(" AI=");
+    Serial.print(last_ai_label);
+    Serial.print(" conf=");
+    Serial.println(last_ai_conf, 2);
+  }
 }
 
 // ====== Edge Impulse Classifier Integration ======
 //
-// Model expects 5 inputs in this order:
-//   [soil, light, temp, humidity, pump_state]
+// New model expects 3 inputs in this order:
+//   [soil, humidity, pump_state]
 //
 void run_edge_impulse_classifier(float soil,
-                                 float light,
-                                 float temp,
                                  float hum,
                                  float pump_state)
 {
-  // Sanity check
-  if (EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE != 5)
+  // Sanity check for the new model
+  if (EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE != 3)
   {
 #ifndef CLEAN_SERIAL
     Serial.print("ERROR: Model expects ");
     Serial.print(EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
-    Serial.println(" features, but code assumes 5.");
+    Serial.println(" features, but code assumes 3.");
 #endif
     return;
   }
@@ -244,12 +335,10 @@ void run_edge_impulse_classifier(float soil,
   float features[EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE];
 
   // Feature order must match Edge Impulse model:
-  // soil, light, temp, humidity, pump_state
+  // soil, humidity, pump_state
   features[0] = safeFloat(soil);
-  features[1] = safeFloat(light);
-  features[2] = safeFloat(temp);
-  features[3] = safeFloat(hum);
-  features[4] = safeFloat(pump_state);
+  features[1] = safeFloat(hum);
+  features[2] = safeFloat(pump_state);
 
   // Wrap the buffer in an Edge Impulse signal_t
   signal_t signal;
@@ -295,9 +384,13 @@ void run_edge_impulse_classifier(float soil,
     }
   }
 
+  // Save result for use in JSON / logic
+  last_ai_label = String(result.classification[best_i].label);
+  last_ai_conf  = best_val;
+
 #ifndef CLEAN_SERIAL
   Serial.print("Predicted: ");
-  Serial.print(result.classification[best_i].label);
+  Serial.print(last_ai_label);
   Serial.print(" (");
   Serial.print(best_val, 2);
   Serial.println(")");
@@ -368,30 +461,28 @@ void loop()
 
     Readings r = readAll();
 
+    // ===== Inference mode (when CLEAN_SERIAL is *not* defined) =====
+#ifndef CLEAN_SERIAL
+    float temp = r.bmeOK ? r.tempC : (r.dhtOK ? r.dhtTempC : 0.0f);
+    float hum  = r.bmeOK ? r.humidity : (r.dhtOK ? r.dhtHum : 0.0f);
+    float pump_val = pumpState ? 1.0f : 0.0f;
+
+    // New model: soil, humidity, pump_state
+    run_edge_impulse_classifier(
+        (float)r.soilRaw, // soil
+        hum,              // humidity
+        pump_val          // pump_state
+    );
+#endif
+
     // ===== Data collection mode (Edge Impulse CSV) =====
 #ifdef CLEAN_SERIAL
     printForEdgeImpulse(r);
 #endif
 
-    // LCD + watering logic
+    // LCD + watering logic (now using latest AI prediction)
     showOnLCD(r);
     maybeWater(r);
-
-    // ===== Inference mode (when CLEAN_SERIAL is *not* defined) =====
-#ifndef CLEAN_SERIAL
-    // Prepare features for the classifier
-    float temp = r.bmeOK ? r.tempC : (r.dhtOK ? r.dhtTempC : 0.0f);
-    float hum = r.bmeOK ? r.humidity : (r.dhtOK ? r.dhtHum : 0.0f);
-    float pump_val = pumpState ? 1.0f : 0.0f;
-
-    run_edge_impulse_classifier(
-        (float)r.soilRaw, // soil
-        r.lux,            // light
-        temp,             // temp
-        hum,              // humidity
-        pump_val          // pump_state
-    );
-#endif
 
     // ------- Wi-Fi JSON POST -------
     if (WiFi.status() == WL_CONNECTED)
@@ -403,15 +494,24 @@ void loop()
       float temp = r.bmeOK ? r.tempC : (r.dhtOK ? r.dhtTempC : 0.0f);
       float hum = r.bmeOK ? r.humidity : (r.dhtOK ? r.dhtHum : 0.0f);
 
+      ConditionState cs = computeCondition(r);
+
       String payload = "{";
-      payload += "\"plant_id\":\"haworthia\","; // <--- ADD THIS LINE
+      payload += "\"plant_id\":\"haworthia\",";
       payload += "\"soil\":" + String(r.soilRaw) + ",";
       payload += "\"light\":" + String(r.lux, 2) + ",";
       payload += "\"temp\":" + String(temp, 2) + ",";
       payload += "\"humidity\":" + String(hum, 2) + ",";
       payload += "\"pump_state\":" + String(pumpState ? 1 : 0) + ",";
-      payload += "\"condition\":\"" + String((r.soilRaw > SOIL_DRY_THRESHOLD) ? "dry" : "ok") + "\"";
+
+      // Use the same condition everywhere
+      payload += "\"condition\":\"" + cs.label + "\",";
+
+      // Optional: still send raw AI info for debugging
+      payload += "\"ai_label\":\"" + last_ai_label + "\",";
+      payload += "\"ai_conf\":" + String(last_ai_conf, 2);
       payload += "}";
+
 
       http.POST(payload);
       http.end();
