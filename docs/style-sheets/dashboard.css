@@ -1,0 +1,112 @@
+  body {
+    margin: 0;
+    background: #f4faf2;
+    font-family: Arial, sans-serif;
+  }
+
+  header {
+    background: #4caf50;
+    color: white;
+    padding: 20px;
+    text-align: center;
+    font-size: 28px;
+    font-weight: bold;
+  }
+
+  .cards {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 25px;
+    padding: 40px;
+  }
+
+  .card {
+    width: 330px;
+    background: #fff7d1;
+    padding: 25px;
+    border-radius: 18px;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    transition: 0.2s ease;
+    text-decoration: none;
+    color: inherit;
+    position: relative;
+  }
+
+  .card-status {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    padding: 4px 8px;
+    font-size: 13px;
+    border-radius: 8px;
+    font-weight: bold;
+    background: #eee;
+    color: #333;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+  }
+
+  .card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+  }
+
+  .plant-title {
+    font-size: 26px;
+    font-weight: bold;
+    color: #b36d00;
+    margin-bottom: 10px;
+  }
+
+  /* Condition badge style */
+  .condition-badge {
+    padding: 6px 12px;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 10px;
+    display: inline-block;
+    margin-bottom: 12px;
+  }
+  /* Plant corner illustration */
+  .plant-corner {
+    position: fixed;
+    bottom: 20px;
+    right: 10px;
+    width: 170px;
+    opacity: 0.9;
+    pointer-events: none;
+  }
+  /* Extra small screens */
+  @media (max-width: 730px) {
+    .plant-corner {
+      width: 135px;
+      bottom: -10px;
+      right: 1px;
+      z-index: 2;
+    }
+  }
+  @media (max-width: 655px) {
+    .plant-corner {
+      width: 100px;
+      bottom: -10px;
+      right: -1px;
+      z-index: 2;
+    }
+  }
+  @media (max-width: 560px) {
+    .plant-corner {
+      width: 90px;
+      bottom: -10px;
+      right: -5px;
+      z-index: 2;
+    }
+  }
+  @media (max-width: 550px) {
+    .plant-corner {
+      width: 60px;
+      bottom: -5px;
+      right: -5px;
+      z-index: 3;
+    }
+  }
