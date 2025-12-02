@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Haworthia – Live Data</title>
+
+<link rel="stylesheet" href="/docs/style-sheets/plant-dashboard.css">
+</head>
+
+<body>
+
+<a class="back" href="../index.html">⬅ Back to Dashboard</a>
+
+<h1>🌱 Haworthia – Live Data</h1>
+
+<div class="status-bar">
+  <span id="connection-status" class="status-dot offline"></span>
+  <span id="connection-text">Checking connection…</span>
+  <span id="last-updated" class="last-updated"></span>
+</div>
+
+<div class="data-container">
+  <div class="card">
+    <h2>Sensor Readings</h2>
+    <div class="row"><span class="label">Soil Moisture:</span> <span id="soil">--</span></div>
+    <div class="row"><span class="label">Light (lux):</span> <span id="light">--</span></div>
+    <div class="row"><span class="label">Temperature (°C):</span> <span id="temp">--</span></div>
+    <div class="row"><span class="label">Humidity (%):</span> <span id="humidity">--</span></div>
+    <div class="row"><span class="label">Pump:</span> <span id="pump">--</span></div>
+    <div class="row"><span class="label">Condition:</span> <span id="condition">--</span></div>
+  </div>
+
+  <div class="card ai-box">
+    <h2>AI Classification (Edge Impulse)</h2>
+    <div class="row"><span class="label">Prediction:</span> <span id="ai-label">--</span></div>
+    <div class="row"><span class="label">Confidence:</span> <span id="ai-conf">--</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Moisture History</h2>
+    <canvas id="moistureChart" height="130"></canvas>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+  window.PLANT_ID = "haworthia";
+</script>
+
+<script src="/docs/js-sheets/plant-dashboard.js"></script>
+
+</body>
+</html>
