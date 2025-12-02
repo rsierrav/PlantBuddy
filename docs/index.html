@@ -136,45 +136,61 @@
 
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+
 <script>
-async function updateStatus(plant, elementId) {
-    try {
-        const res = await fetch(`http://127.0.0.1:5000/latest?plant=${plant}`);
-        const data = await res.json();
+  const SUPABASE_URL = "https://lkehixwlfdqsdebixcap.supabase.co";
+  const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxrZWhpeHdsZmRxc2RlYml4Y2FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ2MTk1NDYsImV4cCI6MjA4MDE5NTU0Nn0.HTt0VPEUgbkSJZfvIkuec6P6-TlHKr37c1FLl2hs6Ak";
 
-        const el = document.getElementById(elementId);
+  const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        if (data.condition === "ok") {
-            el.textContent = "Current Condition: 🌿 Healthy";
-            el.style.background = "#e8ffe7";
-            el.style.color = "#2d6a33";
-        } else if (data.condition === "dry") {
-            el.textContent = "Current Condition: 🌵 Dry";
-            el.style.background = "#fff4e0";
-            el.style.color = "#b36d00";
-        } else if (data.condition === "wet") {
-            el.textContent = "Current Condition: 💧 Wet";
-            el.style.background = "#e3f3ff";
-            el.style.color = "#005c99";
-        } else {
-            el.textContent = "Current Condition:❓ Unknown";
-            el.style.background = "#eee";
-            el.style.color = "#333";
-        }
-    } catch (err) {
-        console.log("Error fetching condition for " + plant, err);
-    }
+async function loadLatestCondition(plantId, elementId) {
+  const { data, error } = await client
+    .from("plant_data")
+    .select("condition")
+    .eq("plant_id", plantId)
+    .order("id", { ascending: false })
+    .limit(1);
+
+  const el = document.getElementById(elementId);
+
+  if (!data || data.length === 0) {
+    el.textContent = "No data yet";
+    el.style.background = "#eee";
+    el.style.color = "#333";
+    return;
+  }
+
+  const condition = data[0].condition;
+
+  if (condition === "fine") {
+     el.textContent = "🌿 Healthy";
+     el.style.background = "#e8ffe7";
+     el.style.color = "#2d6a33";
+  }
+  else if (condition === "needs_water") {
+     el.textContent = "💧 Needs Water";
+     el.style.background = "#fff4e0";
+     el.style.color = "#b36d00";
+  }
+  else {
+     el.textContent = "❓ Unknown";
+     el.style.background = "#eee";
+     el.style.color = "#333";
+  }
 }
 
 function refreshAll() {
-    updateStatus("haworthia", "h-status");
-    updateStatus("peperomia", "p-status");
-    updateStatus("fittonia", "f-status");
+  loadLatestCondition("haworthia", "h-status");
+  loadLatestCondition("peperomia", "p-status");
+  loadLatestCondition("fittonia", "f-status");
 }
 
 setInterval(refreshAll, 3000);
 refreshAll();
+
 </script>
+
 <img src="PlantCorner.png" class="plant-corner">
 </body>
 </html>
