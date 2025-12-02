@@ -512,9 +512,9 @@ void loop()
         // JSON body matching Supabase table columns
         String payload = "{";
         payload += "\"plant_id\":\"peperomia\","; // change plant ID as needed (haworthia, peperomia, and fittonia)
-        payload += "\"soil_moisture\":" + String(r.soilRaw) + ",";
-        payload += "\"light_level\":" + String(r.lux, 2) + ",";
-        payload += "\"temperature\":" + String(temp, 2) + ",";
+        payload += "\"soil\":" + String(r.soilRaw) + ",";
+        payload += "\"light\":" + String(r.lux, 2) + ",";
+        payload += "\"temp\":" + String(temp, 2) + ",";
         payload += "\"humidity\":" + String(hum, 2) + ",";
         payload += "\"pump_state\":" + String(pumpState ? 1 : 0) + ",";
         payload += "\"condition\":\"" + cs.label + "\"";
