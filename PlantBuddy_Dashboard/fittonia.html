@@ -90,7 +90,7 @@
   const SUPABASE_URL = "https://lkehixwlfdqsdebixcap.supabase.co";
   const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxrZWhpeHdsZmRxc2RlYml4Y2FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ2MTk1NDYsImV4cCI6MjA4MDE5NTU0Nn0.HTt0VPEUgbkSJZfvIkuec6P6-TlHKr37c1FLl2hs6Ak";
 
-  const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
   function updateUI(row) {
     document.getElementById("soil").textContent = row.soil;

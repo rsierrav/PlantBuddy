@@ -137,56 +137,58 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+
 <script>
   const SUPABASE_URL = "https://lkehixwlfdqsdebixcap.supabase.co";
   const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxrZWhpeHdsZmRxc2RlYml4Y2FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ2MTk1NDYsImV4cCI6MjA4MDE5NTU0Nn0.HTt0VPEUgbkSJZfvIkuec6P6-TlHKr37c1FLl2hs6Ak";
-  const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  async function loadLatestCondition(plantId, elementId) {
-      const { data, error } = await supabase
-        .from("plant_data")
-        .select("condition")
-        .eq("plant_id", plantId)
-        .order("id", { ascending: false })
-        .limit(1);
+  const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-      const el = document.getElementById(elementId);
+async function loadLatestCondition(plantId, elementId) {
+  const { data, error } = await client
+    .from("plant_data")
+    .select("condition")
+    .eq("plant_id", plantId)
+    .order("id", { ascending: false })
+    .limit(1);
 
-      if (!data || data.length === 0) {
-          el.textContent = "No data yet";
-          el.style.background = "#eee";
-          el.style.color = "#333";
-          return;
-      }
+  const el = document.getElementById(elementId);
 
-      const condition = data[0].condition;
-
-      if (condition === "fine") {
-          el.textContent = "🌿 Healthy";
-          el.style.background = "#e8ffe7";
-          el.style.color = "#2d6a33";
-      } 
-      else if (condition === "needs_water") {
-          el.textContent = "💧 Needs Water";
-          el.style.background = "#fff4e0";
-          el.style.color = "#b36d00";
-      } 
-      else {
-          el.textContent = "❓ Unknown";
-          el.style.background = "#eee";
-          el.style.color = "#333";
-      }
+  if (!data || data.length === 0) {
+    el.textContent = "No data yet";
+    el.style.background = "#eee";
+    el.style.color = "#333";
+    return;
   }
 
-  function refreshAll() {
-      loadLatestCondition("haworthia", "h-status");
-      loadLatestCondition("peperomia", "p-status");
-      loadLatestCondition("fittonia", "f-status");
-  }
+  const condition = data[0].condition;
 
-  // update every 3 sec
-  setInterval(refreshAll, 3000);
-  refreshAll();
+  if (condition === "fine") {
+     el.textContent = "🌿 Healthy";
+     el.style.background = "#e8ffe7";
+     el.style.color = "#2d6a33";
+  }
+  else if (condition === "needs_water") {
+     el.textContent = "💧 Needs Water";
+     el.style.background = "#fff4e0";
+     el.style.color = "#b36d00";
+  }
+  else {
+     el.textContent = "❓ Unknown";
+     el.style.background = "#eee";
+     el.style.color = "#333";
+  }
+}
+
+function refreshAll() {
+  loadLatestCondition("haworthia", "h-status");
+  loadLatestCondition("peperomia", "p-status");
+  loadLatestCondition("fittonia", "f-status");
+}
+
+setInterval(refreshAll, 3000);
+refreshAll();
+
 </script>
 
 <img src="PlantCorner.png" class="plant-corner">
