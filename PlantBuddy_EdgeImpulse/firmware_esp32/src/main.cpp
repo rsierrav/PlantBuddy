@@ -517,7 +517,9 @@ void loop()
         payload += "\"temp\":" + String(temp, 2) + ",";
         payload += "\"humidity\":" + String(hum, 2) + ",";
         payload += "\"pump_state\":" + String(pumpState ? 1 : 0) + ",";
-        payload += "\"condition\":\"" + cs.label + "\"";
+        payload += "\"ai_label\":\"" + last_ai_label + "\",";
+        payload += "\"ai_conf\":" + String(last_ai_conf, 3) + ",";
+        payload += "\"condition\":\"" + cs.label + "\"";;
         payload += "}";
 
         int status = http.POST(payload);
