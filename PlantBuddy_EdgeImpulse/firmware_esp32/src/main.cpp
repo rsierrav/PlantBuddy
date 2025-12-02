@@ -48,6 +48,9 @@ static const int WATER_MS = 3000;
 static const long WATER_COOLDOWN_MS = 60L * 1000L;
 static const unsigned long READ_MS = 2000;
 static const bool RELAY_ACTIVE_LOW = true;
+// AI + watering tuning
+static const int SOIL_SAFETY_WET = 1600;     // Below this, never water (soil clearly moist)
+static const float AI_CONF_THRESHOLD = 0.6f; // How sure AI must be to trigger watering
 
 // -------- State --------
 unsigned long lastReadMs = 0;
@@ -228,28 +231,54 @@ void maybeWater(const Readings &r)
 {
   unsigned long now = millis();
 
-  // Simple rule fallback
-  bool ruleDry = (r.soilRaw > SOIL_DRY_THRESHOLD);
+  // 1) What does the raw soil number say?
+  bool soilSaysDry = (r.soilRaw > SOIL_DRY_THRESHOLD); // > 1800 means dry by your rule
 
-  // AI decision: trust "needs_water" if confidence is high enough
-  bool aiDry = false;
-  if (last_ai_label == "needs_water" && last_ai_conf >= 0.6f) {
-    aiDry = true;
+  // 2) What does the AI say?
+  bool aiSaysDry = false;
+  if (last_ai_label == "needs_water" && last_ai_conf >= AI_CONF_THRESHOLD) {
+    aiSaysDry = true;
   }
 
-  bool needsWater = aiDry || ruleDry;
+  // 3) Combine them:
+  //    We only water if BOTH think it's dry.
+  bool shouldWater = aiSaysDry && soilSaysDry;
 
-  // LEDs follow the (AI-driven) needsWater state
-  digitalWrite(PIN_LED_RED, needsWater ? HIGH : LOW);
-  digitalWrite(PIN_LED_GRN, needsWater ? LOW : HIGH);
+  // 4) Safety: if soil looks clearly moist, never water
+  if (r.soilRaw < SOIL_SAFETY_WET) {
+    shouldWater = false;
+  }
 
-  if (needsWater && (now - lastWaterActionMs >= WATER_COOLDOWN_MS))
+  // 5) Drive LEDs based on "is it at least kinda dry?"
+  bool warnDry = soilSaysDry || aiSaysDry;
+
+  digitalWrite(PIN_LED_RED, warnDry ? HIGH : LOW);
+  digitalWrite(PIN_LED_GRN, warnDry ? LOW : HIGH);
+
+  // 6) Actually run the pump if we decided it's needed and cooldown passed
+  if (shouldWater && (now - lastWaterActionMs >= WATER_COOLDOWN_MS))
   {
+    Serial.print("WATERING: soil=");
+    Serial.print(r.soilRaw);
+    Serial.print(" AI=");
+    Serial.print(last_ai_label);
+    Serial.print(" conf=");
+    Serial.println(last_ai_conf, 2);
+
     setRelay(true);
     beep(60);
     delay(WATER_MS);
     setRelay(false);
     lastWaterActionMs = millis();
+  }
+  else
+  {
+    Serial.print("NO WATER: soil=");
+    Serial.print(r.soilRaw);
+    Serial.print(" AI=");
+    Serial.print(last_ai_label);
+    Serial.print(" conf=");
+    Serial.println(last_ai_conf, 2);
   }
 }
 
