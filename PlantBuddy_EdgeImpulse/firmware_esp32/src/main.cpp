@@ -4,7 +4,6 @@
  * LCD, Pump Relay, Wi-Fi JSON POST, and EI CSV Output
  ******************************************************/
 // #define CLEAN_SERIAL // Uncomment to enable CSV output for Edge Impulse data collection
-#include <secrets.h>
 #include <Wire.h>
 #include <Adafruit_BME680.h>
 #include <DHT.h>
@@ -51,11 +50,6 @@ static const bool RELAY_ACTIVE_LOW = true;
 static const int SOIL_SAFETY_WET = 1600;     // Below this, never water (soil clearly moist)
 static const int SOIL_DRY_THRESHOLD = 2100; // at or above this = clearly dry (adjust after testing)
 static const float AI_CONF_THRESHOLD = 0.6f; // How sure AI must be to trigger watering
-
-// -------- SUPABASE CONFIG --------
-static const char* SUPABASE_URL = "https://lkehixwlfdqsdebixcap.supabase.co/rest/v1/plant_data";
-static const char* SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxrZWhpeHdsZmRxc2RlYml4Y2FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ2MTk1NDYsImV4cCI6MjA4MDE5NTU0Nn0.HTt0VPEUgbkSJZfvIkuec6P6-TlHKr37c1FLl2hs6Ak";
-
 
 // -------- State --------
 unsigned long lastReadMs = 0;
@@ -402,6 +396,46 @@ void run_edge_impulse_classifier(float soil,
 #endif
 }
 
+bool connectToWiFi()
+{
+  WiFi.mode(WIFI_STA);
+  Serial.println("Wi-Fi auto-connect starting...");
+
+  for (int i = 0; i < WIFI_NETWORK_COUNT; i++)
+  {
+    Serial.print("Trying WiFi ");
+    Serial.print(i + 1);
+    Serial.print(" of ");
+    Serial.print(WIFI_NETWORK_COUNT);
+    Serial.print(": ");
+    Serial.println(WIFI_SSIDS[i]);
+
+    WiFi.begin(WIFI_SSIDS[i], WIFI_PASSWORDS[i]);
+
+    unsigned long startAttempt = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - startAttempt) < 10000)
+    {
+      delay(500);
+      Serial.print(".");
+    }
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
+      Serial.println("\nConnected to Wi-Fi!");
+      Serial.print("SSID: ");
+      Serial.println(WIFI_SSIDS[i]);
+      Serial.print("IP Address: ");
+      Serial.println(WiFi.localIP());
+      return true;
+    }
+
+    Serial.println("\nFailed to connect to this Wi-Fi, trying next...");
+  }
+
+  Serial.println("No Wi-Fi networks connected. Continuing offline.");
+  return false;
+}
+
 void setup()
 {
   pinMode(PIN_RELAY, OUTPUT);
@@ -430,30 +464,7 @@ void setup()
   if (bmeOK)
     ledsOK();
 
-  bool enableWiFi = false; // user choice
-
-  Serial.println("Wi-Fi auto-connect starting...");
-
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  unsigned long wifiStart = millis();
-
-  while (WiFi.status() != WL_CONNECTED && (millis() - wifiStart) < 10000)
-  {
-    delay(500);
-    Serial.print(".");
-  }
-
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    Serial.println("\nWi-Fi connected!");
-    Serial.print("IP Address: ");
-    Serial.println(WiFi.localIP());
-  }
-  else
-  {
-    Serial.println("\nWi-Fi connection failed. Continuing offline.");
-  }
-
+  connectToWiFi();
   lastReadMs = millis();
 }
 
