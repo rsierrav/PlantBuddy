@@ -4,7 +4,7 @@
  * LCD, Pump Relay, Wi-Fi JSON POST, and EI CSV Output
  ******************************************************/
 // #define CLEAN_SERIAL // Uncomment to enable CSV output for Edge Impulse data collection
-
+#include <secrets.h>
 #include <Wire.h>
 #include <Adafruit_BME680.h>
 #include <DHT.h>
@@ -47,11 +47,6 @@ static const int WATER_MS = 3000;
 static const long WATER_COOLDOWN_MS = 60L * 1000L;
 static const unsigned long READ_MS = 2000;
 static const bool RELAY_ACTIVE_LOW = true;
-
-// -------- Wi-Fi --------
-const char *WIFI_SSID = "arrozconhuevo";
-const char *WIFI_PASS = "creek7527flight";
-const char *SERVER_URL = "http://192.168.1.173:5000/ingest";
 
 // -------- State --------
 unsigned long lastReadMs = 0;

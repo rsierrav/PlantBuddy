@@ -33,3 +33,5 @@ Thumbs.db
 *.tflite
 *.bin
 *.eim
+
+secrets.h
