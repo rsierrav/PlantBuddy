@@ -52,6 +52,11 @@ static const int SOIL_SAFETY_WET = 1600;     // Below this, never water (soil cl
 static const int SOIL_DRY_THRESHOLD = 2100; // at or above this = clearly dry (adjust after testing)
 static const float AI_CONF_THRESHOLD = 0.6f; // How sure AI must be to trigger watering
 
+// -------- SUPABASE CONFIG --------
+static const char* SUPABASE_URL = "https://lkehixwlfdqsdebixcap.supabase.co/rest/v1/plant_data";
+static const char* SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxrZWhpeHdsZmRxc2RlYml4Y2FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ2MTk1NDYsImV4cCI6MjA4MDE5NTU0Nn0.HTt0VPEUgbkSJZfvIkuec6P6-TlHKr37c1FLl2hs6Ak";
+
+
 // -------- State --------
 unsigned long lastReadMs = 0;
 unsigned long lastWaterActionMs = 0;
@@ -484,37 +489,51 @@ void loop()
     showOnLCD(r);
     maybeWater(r);
 
-    // ------- Wi-Fi JSON POST -------
+    // ------- Wi-Fi JSON POST (Supabase) -------
     if (WiFi.status() == WL_CONNECTED)
     {
-      HTTPClient http;
-      http.begin(SERVER_URL);
-      http.addHeader("Content-Type", "application/json");
+        HTTPClient http;
 
-      float temp = r.bmeOK ? r.tempC : (r.dhtOK ? r.dhtTempC : 0.0f);
-      float hum = r.bmeOK ? r.humidity : (r.dhtOK ? r.dhtHum : 0.0f);
+        // Supabase REST endpoint for inserting rows
+        http.begin(SUPABASE_URL);
 
-      ConditionState cs = computeCondition(r);
+        // Required Supabase headers
+        http.addHeader("Content-Type", "application/json");
+        http.addHeader("apikey", SUPABASE_KEY);
+        http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
+        http.addHeader("Prefer", "return=minimal");
+        http.addHeader("Content-Profile", "public");
 
-      String payload = "{";
-      payload += "\"plant_id\":\"haworthia\",";
-      payload += "\"soil\":" + String(r.soilRaw) + ",";
-      payload += "\"light\":" + String(r.lux, 2) + ",";
-      payload += "\"temp\":" + String(temp, 2) + ",";
-      payload += "\"humidity\":" + String(hum, 2) + ",";
-      payload += "\"pump_state\":" + String(pumpState ? 1 : 0) + ",";
+        float temp = r.bmeOK ? r.tempC : (r.dhtOK ? r.dhtTempC : 0.0f);
+        float hum  = r.bmeOK ? r.humidity : (r.dhtOK ? r.dhtHum : 0.0f);
 
-      // Use the same condition everywhere
-      payload += "\"condition\":\"" + cs.label + "\",";
+        ConditionState cs = computeCondition(r);
 
-      // Optional: still send raw AI info for debugging
-      payload += "\"ai_label\":\"" + last_ai_label + "\",";
-      payload += "\"ai_conf\":" + String(last_ai_conf, 2);
-      payload += "}";
+        // JSON body matching Supabase table columns
+        String payload = "{";
+        payload += "\"plant_id\":\"peperomia\","; // change plant ID as needed (haworthia, peperomia, and fittonia)
+        payload += "\"soil_moisture\":" + String(r.soilRaw) + ",";
+        payload += "\"light_level\":" + String(r.lux, 2) + ",";
+        payload += "\"temperature\":" + String(temp, 2) + ",";
+        payload += "\"humidity\":" + String(hum, 2) + ",";
+        payload += "\"pump_state\":" + String(pumpState ? 1 : 0) + ",";
+        payload += "\"condition\":\"" + cs.label + "\"";
+        payload += "}";
 
+        int status = http.POST(payload);
 
-      http.POST(payload);
-      http.end();
+        Serial.print("Supabase POST status: ");
+        Serial.println(status);
+
+        if (status > 0) {
+            Serial.println("Payload sent:");
+            Serial.println(payload);
+        } else {
+            Serial.println("POST failed!");
+            Serial.println(http.errorToString(status));
+        }
+
+        http.end();
     }
   }
 }
