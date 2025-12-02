@@ -4,7 +4,7 @@
  * LCD, Pump Relay, Wi-Fi JSON POST, and EI CSV Output
  ******************************************************/
 // #define CLEAN_SERIAL // Uncomment to enable CSV output for Edge Impulse data collection
-
+#include <secrets.h>
 #include <Wire.h>
 #include <Adafruit_BME680.h>
 #include <DHT.h>

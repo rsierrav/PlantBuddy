@@ -1,135 +1,180 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Plant Buddy Dashboard</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plant Buddy Dashboard</title>
 
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #eef5ea;
-      margin: 0;
-      padding: 0;
-    }
+<style>
+  body {
+    margin: 0;
+    background: #f4faf2;
+    font-family: Arial, sans-serif;
+  }
 
-    header {
-      background: #4caf50;
-      color: white;
-      padding: 20px;
-      text-align: center;
-      font-size: 26px;
-      font-weight: bold;
-    }
+  header {
+    background: #4caf50;
+    color: white;
+    padding: 20px;
+    text-align: center;
+    font-size: 28px;
+    font-weight: bold;
+  }
 
-    .corner-plant {
-      position: absolute;
-      bottom: 20px;
-      right: 15px;
-      width: 150px;
-      z-index: 1;
-      pointer-events: none;
-    }
+  .cards {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 25px;
+    padding: 40px;
+  }
 
-    .container {
-      display: flex;
-      justify-content: center;
-      gap: 40px;
-      margin-top: 50px;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
-    }
+  .card {
+    width: 330px;
+    background: #fff7d1;
+    padding: 25px;
+    border-radius: 18px;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    transition: 0.2s ease;
+    text-decoration: none;
+    color: inherit;
+  }
 
-    .plant-card {
-      background: rgb(252, 240, 186);
-      width: 300px;
-      height: 115px;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.15);
-      text-align: center;
-      transition: 0.2s;
-      cursor: pointer;
-    }
+  .card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+  }
 
-    .plant-card:hover {
-      transform: scale(1.14);
-    }
+  .plant-title {
+    font-size: 26px;
+    font-weight: bold;
+    color: #b36d00;
+    margin-bottom: 10px;
+  }
 
-    a {
-      text-decoration: none;
-      color: #cb6a14;
+  /* Condition badge style */
+  .condition-badge {
+    padding: 6px 12px;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 10px;
+    display: inline-block;
+    margin-bottom: 12px;
+  }
+  /* Plant corner illustration */
+  .plant-corner {
+    position: fixed;
+    bottom: 20px;
+    right: 10px;
+    width: 170px;
+    opacity: 0.9;
+    pointer-events: none;
+  }
+  /* Extra small screens */
+  @media (max-width: 730px) {
+    .plant-corner {
+      width: 135px;
+      bottom: -10px;
+      right: 1px;
+      z-index: 2;
     }
-
-    h2 {
-      margin-bottom: 15px;
+  }
+  @media (max-width: 655px) {
+    .plant-corner {
+      width: 100px;
+      bottom: -10px;
+      right: -1px;
+      z-index: 2;
     }
-
-    /* Extra small screens */
-    @media (max-width: 680px) {
-      .corner-plant {
-        width: 135px;
-        bottom: -10px;
-        right: 1px;
-        z-index: 2;
-      }
+  }
+  @media (max-width: 560px) {
+    .plant-corner {
+      width: 90px;
+      bottom: -10px;
+      right: -5px;
+      z-index: 2;
     }
-    @media (max-width: 655px) {
-      .corner-plant {
-        width: 100px;
-        bottom: -25px;
-        right: -1px;
-        z-index: 2;
-      }
+  }
+  @media (max-width: 550px) {
+    .plant-corner {
+      width: 60px;
+      bottom: -5px;
+      right: -5px;
+      z-index: 3;
     }
-    @media (max-width: 560px) {
-      .corner-plant {
-        width: 90px;
-        bottom: -35px;
-        right: -5px;
-        z-index: 2;
-      }
-    }
-    @media (max-width: 550px) {
-      .corner-plant {
-        width: 60px;
-        bottom: -45px;
-        right: -5px;
-        z-index: 3;
-      }
-    }
-  </style>
+  }
+</style>
 </head>
+
 <body>
 
-<header>
-  🌱 Plant Buddy Dashboard
-</header>
+<header>🌿 Plant Buddy Dashboard</header>
 
-<div class="container">
+<div class="cards">
 
-  <a href="haworthia.html">
-    <div class="plant-card">
-      <h2>Haworthia</h2>
-      <p>View live moisture, temperature, humidity & light levels.</p>
-    </div>
+  <!-- Haworthia -->
+  <a href="haworthia.html" class="card">
+    <div class="plant-title">Haworthia</div>
+    <div id="h-status" class="condition-badge">Loading...</div>
+    <p>View live moisture, temperature, humidity & light levels.</p>
   </a>
 
-  <a href="peperomia.html">
-    <div class="plant-card">
-      <h2>Peperomia</h2>
-      <p>View live moisture, temperature, humidity & light levels.</p>
-    </div>
+  <!-- Peperomia -->
+  <a href="peperomia.html" class="card">
+    <div class="plant-title">Peperomia</div>
+    <div id="p-status" class="condition-badge">Loading...</div>
+    <p>View live moisture, temperature, humidity & light levels.</p>
   </a>
 
-  <a href="fittonia.html">
-    <div class="plant-card">
-      <h2>Fittonia</h2>
-      <p>View live moisture, temperature, humidity & light levels.</p>
-    </div>
+  <!-- Fittonia -->
+  <a href="fittonia.html" class="card">
+    <div class="plant-title">Fittonia</div>
+    <div id="f-status" class="condition-badge">Loading...</div>
+    <p>View live moisture, temperature, humidity & light levels.</p>
   </a>
 
 </div>
-<img src="PlantCorner.png" class="corner-plant" />
+
+<script>
+async function updateStatus(plant, elementId) {
+    try {
+        const res = await fetch(`http://127.0.0.1:5000/latest?plant=${plant}`);
+        const data = await res.json();
+
+        const el = document.getElementById(elementId);
+
+        if (data.condition === "ok") {
+            el.textContent = "Current Condition: 🌿 Healthy";
+            el.style.background = "#e8ffe7";
+            el.style.color = "#2d6a33";
+        } else if (data.condition === "dry") {
+            el.textContent = "Current Condition: 🌵 Dry";
+            el.style.background = "#fff4e0";
+            el.style.color = "#b36d00";
+        } else if (data.condition === "wet") {
+            el.textContent = "Current Condition: 💧 Wet";
+            el.style.background = "#e3f3ff";
+            el.style.color = "#005c99";
+        } else {
+            el.textContent = "Current Condition:❓ Unknown";
+            el.style.background = "#eee";
+            el.style.color = "#333";
+        }
+    } catch (err) {
+        console.log("Error fetching condition for " + plant, err);
+    }
+}
+
+function refreshAll() {
+    updateStatus("haworthia", "h-status");
+    updateStatus("peperomia", "p-status");
+    updateStatus("fittonia", "f-status");
+}
+
+setInterval(refreshAll, 3000);
+refreshAll();
+</script>
+<img src="PlantCorner.png" class="plant-corner">
 </body>
 </html>
