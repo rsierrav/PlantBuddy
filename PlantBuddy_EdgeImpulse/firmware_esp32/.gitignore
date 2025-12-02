@@ -33,3 +33,6 @@ Thumbs.db
 *.tflite
 *.bin
 *.eim
+
+# --- Ignore secrets file ---
+src/secrets.h
