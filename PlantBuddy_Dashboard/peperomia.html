@@ -11,7 +11,6 @@
     background: #f4faf2;
     padding: 20px;
   }
-
   .back {
     display: inline-block;
     margin-bottom: 20px;
@@ -20,18 +19,15 @@
     text-decoration: none;
     font-weight: bold;
   }
-
   h1 {
     text-align: center;
     color: #3d8b40;
     margin-bottom: 20px;
   }
-
   .data-container {
     max-width: 700px;
     margin: auto;
   }
-
   .card {
     background: white;
     padding: 20px;
@@ -39,29 +35,24 @@
     margin-bottom: 20px;
     box-shadow: 0 2px 12px rgba(0,0,0,0.12);
   }
-
   .card h2 {
     margin-bottom: 12px;
     color: #4caf50;
   }
-
   .row {
     display: flex;
     justify-content: space-between;
     padding: 8px 0;
     font-size: 18px;
   }
-
   .label {
     font-weight: bold;
   }
-
   .ai-box {
     background: #e7f7e8;
     border-left: 6px solid #4caf50;
   }
 </style>
-
 </head>
 
 <body>
@@ -71,8 +62,6 @@
 <h1>🌱 Peperomia – Live Data</h1>
 
 <div class="data-container">
-
-  <!-- Sensor Values -->
   <div class="card">
     <h2>Sensor Readings</h2>
     <div class="row"><span class="label">Soil Moisture:</span> <span id="soil">--</span></div>
@@ -83,39 +72,64 @@
     <div class="row"><span class="label">Condition:</span> <span id="condition">--</span></div>
   </div>
 
-  <!-- AI Prediction -->
   <div class="card ai-box">
     <h2>AI Classification (Edge Impulse)</h2>
     <div class="row"><span class="label">Prediction:</span> <span id="ai-label">--</span></div>
     <div class="row"><span class="label">Confidence:</span> <span id="ai-conf">--</span></div>
   </div>
 
-  <!-- Chart Placeholder -->
   <div class="card">
     <h2>Moisture History</h2>
     <p style="text-align:center; color:#666;">(Chart will be added later)</p>
   </div>
-
 </div>
-<script>
-  async function loadData() {
-    try {
-      const res = await fetch("http://127.0.0.1:5000/latest?plant=peperomia");
-      const data = await res.json();
 
-      document.getElementById("soil").textContent = data.soil;
-      document.getElementById("light").textContent = data.light;
-      document.getElementById("temp").textContent = data.temp;
-      document.getElementById("humidity").textContent = data.humidity;
-      document.getElementById("pump").textContent = data.pump === 1 ? "ON" : "OFF";
-      document.getElementById("condition").textContent = data.condition;
-    } catch (err) {
-      console.log("Error fetching live data:", err);
-    }
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+
+<script>
+  const SUPABASE_URL = "https://lkehixwlfdqsdebixcap.supabase.co";
+  const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxrZWhpeHdsZmRxc2RlYml4Y2FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ2MTk1NDYsImV4cCI6MjA4MDE5NTU0Nn0.HTt0VPEUgbkSJZfvIkuec6P6-TlHKr37c1FLl2hs6Ak";
+
+  const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  function updateUI(row) {
+    document.getElementById("soil").textContent = row.soil;
+    document.getElementById("light").textContent = row.light;
+    document.getElementById("temp").textContent = row.temp;
+    document.getElementById("humidity").textContent = row.humidity;
+    document.getElementById("pump").textContent = row.pump_state === 1 ? "ON" : "OFF";
+    document.getElementById("condition").textContent = row.condition;
+
+    if (row.ai_label) document.getElementById("ai-label").textContent = row.ai_label;
+    if (row.ai_conf) document.getElementById("ai-conf").textContent = row.ai_conf;
   }
 
-  setInterval(loadData, 2000);
-  loadData();
+  async function loadLatest() {
+    const { data, error } = await supabase
+      .from('plant_data')
+      .select('*')
+      .eq('plant_id', 'peperomia')
+      .order('id', { ascending: false })
+      .limit(1);
+
+    if (data && data.length > 0) updateUI(data[0]);
+  }
+
+  supabase
+    .channel('plant_updates')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'plant_data' },
+      (payload) => {
+        if (payload.new.plant_id === "peperomia") {
+          updateUI(payload.new);
+        }
+      }
+    )
+    .subscribe();
+
+  loadLatest();
 </script>
+
 </body>
 </html>
