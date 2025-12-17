@@ -144,7 +144,7 @@ lib_deps =
 
 ---
 
-## 🛠 Troubleshooting
+## Troubleshooting
 
 - **Stuck on “Connecting…”**  
   Hold BOOT while upload starts. Try another USB cable/port.
@@ -160,25 +160,11 @@ lib_deps =
 
 ---
 
-## Roadmap
-
-- [x] Blink test
-- [x] LCD Hello World
-- [x] Read BME680 values
-- [x] Show values on LCD (rotate pages)
-- [x] Light sensor integration
-- [x] Relay + pump control
-- [x] Soil moisture integration
-- [x] Threshold automation
-- [x] Optional: data logging
-
----
-
 ## Edge Impulse & Data Forwarding
 
 ### Firmware Serial Output (CSV)
 
-The ESP32 PlantBuddy firmware prints one **comma-separated line per sample** at `115200` baud, e.g.:
+The ESP32 PlantBuddy firmware prints one **comma-separated line per sample** at `115200` baud, example:
 
 ```text
 1534,550.00,28.90,43.16,0
@@ -204,7 +190,7 @@ edge-impulse-data-forwarder.cmd --frequency 0.5
 
 * Log in with your Edge Impulse account.
 
-* Give the device a name (e.g. `PlantBuddy-1`).
+* Give the device a name (example: `PlantBuddy-1`).
 
 * When asked for axis names, enter:
 
