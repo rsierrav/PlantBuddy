@@ -42,13 +42,13 @@ DHT dht(PIN_DHT, DHTTYPE);
 BH1750 lightMeter;
 
 // -------- Config --------
-static const int WATER_MS = 3000;
+static const int WATER_MS = 5000;
 static const long WATER_COOLDOWN_MS = 60L * 1000L;
 static const unsigned long READ_MS = 2000;
 static const bool RELAY_ACTIVE_LOW = true;
 // AI + watering tuning
 static const int SOIL_SAFETY_WET = 1600;     // Below this, never water (soil clearly moist)
-static const int SOIL_DRY_THRESHOLD = 2100; // at or above this = clearly dry (adjust after testing)
+static const int SOIL_DRY_THRESHOLD = 2100;  // at or above this = clearly dry (adjust after testing)
 static const float AI_CONF_THRESHOLD = 0.6f; // How sure AI must be to trigger watering
 
 // -------- State --------
@@ -58,7 +58,6 @@ bool pumpState = false;
 
 String last_ai_label = "unknown";
 float last_ai_conf = 0.0f;
-
 
 // ====== SANITIZATION FUNCTIONS (Fix NaN Issues) ======
 int safeAnalogRead(int pin)
@@ -175,50 +174,58 @@ Readings readAll()
 }
 
 // ====== Condition Computation ======
-struct ConditionState {
-  String label;      // "fine" or "needs_water"   -> for dashboard / logic
-  bool warnDry;      // whether LED should be red
-  bool shouldWater;  // whether pump is allowed to run
+struct ConditionState
+{
+  String label;     // "fine" or "needs_water"   -> for dashboard / logic
+  bool warnDry;     // whether LED should be red
+  bool shouldWater; // whether pump is allowed to run
 };
 
 // Decide the overall plant state from soil + AI
-ConditionState computeCondition(const Readings &r) {
+ConditionState computeCondition(const Readings &r)
+{
   ConditionState cs;
 
-  bool soilClearlyWet  = (r.soilRaw <= SOIL_SAFETY_WET);
-  bool soilMaybeDry    = (r.soilRaw >= SOIL_DRY_THRESHOLD);  // stricter dry
-  bool aiSaysDry       = (last_ai_label == "needs_water" &&
-                          last_ai_conf >= AI_CONF_THRESHOLD);
+  bool soilClearlyWet = (r.soilRaw <= SOIL_SAFETY_WET);
+  bool soilMaybeDry = (r.soilRaw >= SOIL_DRY_THRESHOLD); // stricter dry
+  bool aiSaysDry = (last_ai_label == "needs_water" &&
+                    last_ai_conf >= AI_CONF_THRESHOLD);
 
   // Default: happy
-  cs.label       = "fine";
-  cs.warnDry     = false;
+  cs.label = "fine";
+  cs.warnDry = false;
   cs.shouldWater = false;
 
   // 1) WET ZONE: soil clearly wet → plant is happy, AI is ignored
-  if (soilClearlyWet) {
-    cs.label       = "fine";        // dashboard: happy
-    cs.warnDry     = false;         // LED green
-    cs.shouldWater = false;         // pump off
+  if (soilClearlyWet)
+  {
+    cs.label = "fine";      // dashboard: happy
+    cs.warnDry = false;     // LED green
+    cs.shouldWater = false; // pump off
   }
   // 2) DRY ZONE: soil clearly dry → ask AI to confirm
-  else if (soilMaybeDry) {
-    if (aiSaysDry) {
-      cs.label       = "needs_water"; // dashboard + LCD say "needs water"
-      cs.warnDry     = true;          // LED red
-      cs.shouldWater = true;          // pump allowed (will still respect cooldown)
-    } else {
-      cs.label       = "fine";        // AI doesn't agree → stay safe
-      cs.warnDry     = false;
+  else if (soilMaybeDry)
+  {
+    if (aiSaysDry)
+    {
+      cs.label = "needs_water"; // dashboard + LCD say "needs water"
+      cs.warnDry = true;        // LED red
+      cs.shouldWater = true;    // pump allowed (will still respect cooldown)
+    }
+    else
+    {
+      cs.label = "fine"; // AI doesn't agree → stay safe
+      cs.warnDry = false;
       cs.shouldWater = false;
     }
   }
   // 3) MIDDLE ZONE: kind of moist → call it fine and DO NOT WATER
-  else {
+  else
+  {
     // between 1600 and 2100
-    cs.label       = "fine";        // everyone says plant is fine
-    cs.warnDry     = false;         // LED green
-    cs.shouldWater = false;         // pump off even if AI says dry
+    cs.label = "fine";      // everyone says plant is fine
+    cs.warnDry = false;     // LED green
+    cs.shouldWater = false; // pump off even if AI says dry
   }
 
   return cs;
@@ -235,9 +242,12 @@ void showOnLCD(const Readings &r)
   ConditionState cs = computeCondition(r);
 
   const char *status;
-  if (cs.label == "needs_water") {
+  if (cs.label == "needs_water")
+  {
     status = "WATER";
-  } else {
+  }
+  else
+  {
     status = "OK";
   }
 
@@ -282,7 +292,7 @@ void maybeWater(const Readings &r)
 
   // LEDs from condition
   digitalWrite(PIN_LED_RED, cs.warnDry ? HIGH : LOW);
-  digitalWrite(PIN_LED_GRN, cs.warnDry ? LOW  : HIGH);
+  digitalWrite(PIN_LED_GRN, cs.warnDry ? LOW : HIGH);
 
   // Only water if condition says it's OK AND cooldown passed
   if (cs.shouldWater && (now - lastWaterActionMs >= WATER_COOLDOWN_MS))
@@ -385,7 +395,7 @@ void run_edge_impulse_classifier(float soil,
 
   // Save result for use in JSON / logic
   last_ai_label = String(result.classification[best_i].label);
-  last_ai_conf  = best_val;
+  last_ai_conf = best_val;
 
 #ifndef CLEAN_SERIAL
   Serial.print("Predicted: ");
@@ -480,7 +490,7 @@ void loop()
     // ===== Inference mode (when CLEAN_SERIAL is *not* defined) =====
 #ifndef CLEAN_SERIAL
     float temp = r.bmeOK ? r.tempC : (r.dhtOK ? r.dhtTempC : 0.0f);
-    float hum  = r.bmeOK ? r.humidity : (r.dhtOK ? r.dhtHum : 0.0f);
+    float hum = r.bmeOK ? r.humidity : (r.dhtOK ? r.dhtHum : 0.0f);
     float pump_val = pumpState ? 1.0f : 0.0f;
 
     // New model: soil, humidity, pump_state
@@ -503,50 +513,54 @@ void loop()
     // ------- Wi-Fi JSON POST (Supabase) -------
     if (WiFi.status() == WL_CONNECTED)
     {
-        HTTPClient http;
+      HTTPClient http;
 
-        // Supabase REST endpoint for inserting rows
-        http.begin(SUPABASE_URL);
+      // Supabase REST endpoint for inserting rows
+      http.begin(SUPABASE_URL);
 
-        // Required Supabase headers
-        http.addHeader("Content-Type", "application/json");
-        http.addHeader("apikey", SUPABASE_KEY);
-        http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
-        http.addHeader("Prefer", "return=minimal");
-        http.addHeader("Content-Profile", "public");
+      // Required Supabase headers
+      http.addHeader("Content-Type", "application/json");
+      http.addHeader("apikey", SUPABASE_KEY);
+      http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
+      http.addHeader("Prefer", "return=minimal");
+      http.addHeader("Content-Profile", "public");
 
-        float temp = r.bmeOK ? r.tempC : (r.dhtOK ? r.dhtTempC : 0.0f);
-        float hum  = r.bmeOK ? r.humidity : (r.dhtOK ? r.dhtHum : 0.0f);
+      float temp = r.bmeOK ? r.tempC : (r.dhtOK ? r.dhtTempC : 0.0f);
+      float hum = r.bmeOK ? r.humidity : (r.dhtOK ? r.dhtHum : 0.0f);
 
-        ConditionState cs = computeCondition(r);
+      ConditionState cs = computeCondition(r);
 
-        // JSON body matching Supabase table columns
-        String payload = "{";
-        payload += "\"plant_id\":\"peperomia\","; // change plant ID as needed (haworthia, peperomia, and fittonia)
-        payload += "\"soil\":" + String(r.soilRaw) + ",";
-        payload += "\"light\":" + String(r.lux, 2) + ",";
-        payload += "\"temp\":" + String(temp, 2) + ",";
-        payload += "\"humidity\":" + String(hum, 2) + ",";
-        payload += "\"pump_state\":" + String(pumpState ? 1 : 0) + ",";
-        payload += "\"ai_label\":\"" + last_ai_label + "\",";
-        payload += "\"ai_conf\":" + String(last_ai_conf, 3) + ",";
-        payload += "\"condition\":\"" + cs.label + "\"";;
-        payload += "}";
+      // JSON body matching Supabase table columns
+      String payload = "{";
+      payload += "\"plant_id\":\"haworthia\","; // change plant ID as needed (haworthia, peperomia, and fittonia)
+      payload += "\"soil\":" + String(r.soilRaw) + ",";
+      payload += "\"light\":" + String(r.lux, 2) + ",";
+      payload += "\"temp\":" + String(temp, 2) + ",";
+      payload += "\"humidity\":" + String(hum, 2) + ",";
+      payload += "\"pump_state\":" + String(pumpState ? 1 : 0) + ",";
+      payload += "\"ai_label\":\"" + last_ai_label + "\",";
+      payload += "\"ai_conf\":" + String(last_ai_conf, 3) + ",";
+      payload += "\"condition\":\"" + cs.label + "\"";
+      ;
+      payload += "}";
 
-        int status = http.POST(payload);
+      int status = http.POST(payload);
 
-        Serial.print("Supabase POST status: ");
-        Serial.println(status);
+      Serial.print("Supabase POST status: ");
+      Serial.println(status);
 
-        if (status > 0) {
-            Serial.println("Payload sent:");
-            Serial.println(payload);
-        } else {
-            Serial.println("POST failed!");
-            Serial.println(http.errorToString(status));
-        }
+      if (status > 0)
+      {
+        Serial.println("Payload sent:");
+        Serial.println(payload);
+      }
+      else
+      {
+        Serial.println("POST failed!");
+        Serial.println(http.errorToString(status));
+      }
 
-        http.end();
+      http.end();
     }
   }
 }
