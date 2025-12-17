@@ -48,13 +48,14 @@ static const unsigned long READ_MS = 2000;
 static const bool RELAY_ACTIVE_LOW = true;
 // AI + watering tuning
 static const int SOIL_SAFETY_WET = 1600;     // Below this, never water (soil clearly moist)
-static const int SOIL_DRY_THRESHOLD = 2100; // at or above this = clearly dry (adjust after testing)
+static const int SOIL_DRY_THRESHOLD = 2000; // at or above this = clearly dry (adjust after testing)
 static const float AI_CONF_THRESHOLD = 0.6f; // How sure AI must be to trigger watering
 
 // -------- State --------
 unsigned long lastReadMs = 0;
 unsigned long lastWaterActionMs = 0;
 bool pumpState = false;
+bool wateredThisCycle = false;
 
 String last_ai_label = "unknown";
 float last_ai_conf = 0.0f;
@@ -278,11 +279,15 @@ void maybeWater(const Readings &r)
 {
   unsigned long now = millis();
 
+  // Compute condition (uses soil + AI result)
   ConditionState cs = computeCondition(r);
 
   // LEDs from condition
   digitalWrite(PIN_LED_RED, cs.warnDry ? HIGH : LOW);
   digitalWrite(PIN_LED_GRN, cs.warnDry ? LOW  : HIGH);
+
+  // By default, assume we did NOT water this loop
+  wateredThisCycle = false;
 
   // Only water if condition says it's OK AND cooldown passed
   if (cs.shouldWater && (now - lastWaterActionMs >= WATER_COOLDOWN_MS))
@@ -294,11 +299,17 @@ void maybeWater(const Readings &r)
     Serial.print(" conf=");
     Serial.println(last_ai_conf, 2);
 
+    // Turn pump ON
     setRelay(true);
     beep(60);
     delay(WATER_MS);
+
+    // Turn pump OFF again
     setRelay(false);
+
+    // Record time + log flag for this cycle
     lastWaterActionMs = millis();
+    wateredThisCycle = true;   // for supabase logging
   }
   else
   {
@@ -522,12 +533,12 @@ void loop()
 
         // JSON body matching Supabase table columns
         String payload = "{";
-        payload += "\"plant_id\":\"peperomia\","; // change plant ID as needed (haworthia, peperomia, and fittonia)
+        payload += "\"plant_id\":\"fittonia\","; // change plant ID as needed (haworthia, peperomia, and fittonia)
         payload += "\"soil\":" + String(r.soilRaw) + ",";
         payload += "\"light\":" + String(r.lux, 2) + ",";
         payload += "\"temp\":" + String(temp, 2) + ",";
         payload += "\"humidity\":" + String(hum, 2) + ",";
-        payload += "\"pump_state\":" + String(pumpState ? 1 : 0) + ",";
+        payload += "\"pump_state\":" + String(wateredThisCycle ? 1 : 0) + ",";
         payload += "\"ai_label\":\"" + last_ai_label + "\",";
         payload += "\"ai_conf\":" + String(last_ai_conf, 3) + ",";
         payload += "\"condition\":\"" + cs.label + "\"";;
